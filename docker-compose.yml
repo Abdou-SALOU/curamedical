@@ -1,0 +1,74 @@
+version: '3.9'
+
+services:
+
+  # Base de données PostgreSQL
+  db:
+    image: postgres:15
+    container_name: medpredict_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - medpredict_network
+
+  # Backend Django
+  backend:
+    build: ./backend
+    container_name: medpredict_backend
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=${DEBUG}
+      - SECRET_KEY=${SECRET_KEY}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=db
+      - IA_SERVICE_URL=http://ia-service:5000
+    depends_on:
+      - db
+    networks:
+      - medpredict_network
+
+  # Frontend React
+  frontend:
+    build: ./frontend
+    container_name: medpredict_frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - medpredict_network
+
+  # Microservice IA Flask
+  ia-service:
+    build: ./ia-service
+    container_name: medpredict_ia
+    volumes:
+      - ./ia-service:/app
+    ports:
+      - "5000:5000"
+    networks:
+      - medpredict_network
+
+volumes:
+  postgres_data:
+
+networks:
+  medpredict_network:
+    driver: bridge
