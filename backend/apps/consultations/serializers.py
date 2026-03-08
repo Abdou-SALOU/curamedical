@@ -13,3 +13,11 @@ class ConsultationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Consultation
         fields = '__all__'
+        extra_kwargs = {
+            'doctor': {'required': False},
+            'ia_suggestions': {'required': False},
+            'ia_used': {'required': False},
+            'clinical_exam': {'required': False},
+            'notes': {'required': False},
+            'symptoms': {'required': False},
+        }

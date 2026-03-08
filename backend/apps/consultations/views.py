@@ -5,6 +5,8 @@ import requests
 from django.conf import settings
 from .models import Consultation
 from .serializers import ConsultationSerializer
+from apps.appointments.models import Appointment
+
 
 class ConsultationListCreateView(generics.ListCreateAPIView):
     serializer_class = ConsultationSerializer
@@ -12,7 +14,9 @@ class ConsultationListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         queryset = Consultation.objects.select_related(
-            'appointment__patient', 'doctor'
+            'appointment__patient',
+            'appointment__doctor',
+            'doctor'
         )
         patient_id = self.request.query_params.get('patient')
         if patient_id:
@@ -20,25 +24,32 @@ class ConsultationListCreateView(generics.ListCreateAPIView):
         return queryset
 
     def perform_create(self, serializer):
-        serializer.save(doctor=self.request.user)
+        appointment_id = self.request.data.get('appointment')
+        try:
+            appointment = Appointment.objects.get(id=appointment_id)
+            serializer.save(doctor=appointment.doctor)
+        except Appointment.DoesNotExist:
+            serializer.save(doctor=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
 
 class ConsultationDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Consultation.objects.all()
     serializer_class = ConsultationSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def get_ia_suggestions(request):
-    """Appelle le microservice IA pour obtenir des suggestions de diagnostic"""
     symptoms = request.data.get('symptoms', [])
-
     if not symptoms:
         return Response(
             {'error': 'Aucun symptôme fourni'},
             status=status.HTTP_400_BAD_REQUEST
         )
-
     try:
         response = requests.post(
             f"{settings.IA_SERVICE_URL}/predict",
@@ -47,7 +58,6 @@ def get_ia_suggestions(request):
         )
         return Response(response.json())
     except requests.exceptions.RequestException:
-        # Mode dégradé : le service IA est indisponible
         return Response(
             {'error': 'Service IA temporairement indisponible', 'degraded': True},
             status=status.HTTP_503_SERVICE_UNAVAILABLE
