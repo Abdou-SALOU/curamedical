@@ -5,12 +5,12 @@ import {
   Stethoscope, FileText, LogOut
 } from 'lucide-react'
 
-const links = [
-  { to: '/',               icon: LayoutDashboard, label: 'Tableau de bord' },
-  { to: '/patients',       icon: Users,           label: 'Patients'        },
-  { to: '/appointments',   icon: Calendar,        label: 'Rendez-vous'     },
-  { to: '/consultations',  icon: Stethoscope,     label: 'Consultations'   },
-  { to: '/prescriptions',  icon: FileText,        label: 'Ordonnances'     },
+const ALL_LINKS = [
+  { to: '/',               icon: LayoutDashboard, label: 'Tableau de bord', roles: ['admin', 'doctor', 'secretary'] },
+  { to: '/patients',       icon: Users,           label: 'Patients',        roles: ['admin', 'doctor', 'secretary'] },
+  { to: '/appointments',   icon: Calendar,        label: 'Rendez-vous',     roles: ['admin', 'doctor', 'secretary'] },
+  { to: '/consultations',  icon: Stethoscope,     label: 'Consultations',   roles: ['admin', 'doctor']              },
+  { to: '/prescriptions',  icon: FileText,        label: 'Ordonnances',     roles: ['admin', 'doctor']              },
 ]
 
 export default function Navbar() {
@@ -21,6 +21,17 @@ export default function Navbar() {
   const handleLogout = () => {
     logout()
     navigate('/login')
+  }
+
+  // Filtrer les liens selon le rôle
+  const links = ALL_LINKS.filter(link =>
+    !user || link.roles.includes(user.role)
+  )
+
+  const roleLabels = {
+    admin: '👑 Administrateur',
+    doctor: '🩺 Médecin',
+    secretary: '📋 Secrétaire',
   }
 
   return (
@@ -53,8 +64,8 @@ export default function Navbar() {
       <div className="p-4 border-t border-blue-700">
         {user && (
           <div className="mb-3 px-2">
-            <p className="font-semibold text-sm">{user.first_name} {user.last_name}</p>
-            <p className="text-blue-300 text-xs capitalize">{user.role}</p>
+            <p className="font-semibold text-sm">{user.first_name} {user.last_name || user.username}</p>
+            <p className="text-blue-300 text-xs">{roleLabels[user.role] || user.role}</p>
           </div>
         )}
         <button

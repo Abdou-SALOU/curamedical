@@ -5,10 +5,12 @@ from django.http import HttpResponse
 from .models import Prescription
 from .serializers import PrescriptionSerializer
 from .pdf_generator import generate_prescription_pdf
+from apps.users.permissions import IsDoctorOrAdmin
+
 
 class PrescriptionListCreateView(generics.ListCreateAPIView):
     serializer_class = PrescriptionSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsDoctorOrAdmin]  # ← Secrétaire bloquée
 
     def get_queryset(self):
         return Prescription.objects.select_related(
@@ -16,15 +18,16 @@ class PrescriptionListCreateView(generics.ListCreateAPIView):
             'consultation__doctor'
         )
 
+
 class PrescriptionDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Prescription.objects.all()
     serializer_class = PrescriptionSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsDoctorOrAdmin]  # ← Secrétaire bloquée
+
 
 @api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated])
+@permission_classes([IsDoctorOrAdmin])  # ← Secrétaire bloquée
 def download_prescription_pdf(request, pk):
-    """Génère et retourne l'ordonnance en PDF"""
     try:
         prescription = Prescription.objects.select_related(
             'consultation__appointment__patient',

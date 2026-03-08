@@ -7,10 +7,14 @@ import {
   Cell, Legend
 } from 'recharts'
 import { Users, Calendar, Stethoscope, Brain } from 'lucide-react'
+import useAuthStore from '../store/authStore'
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4']
 
 export default function DashboardPage() {
+  const { user } = useAuthStore()
+  const isSecretary = user?.role === 'secretary'
+
   const [stats, setStats] = useState({
     patients: 0, appointments: 0,
     consultations: 0, ia_used: 0
@@ -23,18 +27,24 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const [patients, appointments, consultations] = await Promise.all([
+        const requests = [
           api.get('/api/patients/'),
           api.get('/api/appointments/'),
-          api.get('/api/consultations/'),
-        ])
+        ]
+
+        // Consultations uniquement pour médecin/admin
+        if (!isSecretary) {
+          requests.push(api.get('/api/consultations/'))
+        }
+
+        const [patients, appointments, consultations] = await Promise.all(requests)
 
         const patientsList = patients.data.results || patients.data
         const appointmentsList = appointments.data.results || appointments.data
-        const consultationsList = consultations.data.results || consultations.data
+        const consultationsList = consultations?.data.results || consultations?.data || []
 
-        // Stats principales
         const iaUsed = consultationsList.filter(c => c.ia_used).length
+
         setStats({
           patients: patientsList.length,
           appointments: appointmentsList.length,
@@ -42,20 +52,23 @@ export default function DashboardPage() {
           ia_used: iaUsed
         })
 
-        // Répartition des diagnostics
-        const diagCounts = {}
-        consultationsList.forEach(c => {
-          if (c.diagnosis) {
-            diagCounts[c.diagnosis] = (diagCounts[c.diagnosis] || 0) + 1
-          }
-        })
-        const diagData = Object.entries(diagCounts)
-          .map(([name, value]) => ({ name, value }))
-          .sort((a, b) => b.value - a.value)
-          .slice(0, 6)
-        setDiagnosisData(diagData)
+        // Répartition diagnostics (médecin/admin seulement)
+        if (!isSecretary) {
+          const diagCounts = {}
+          consultationsList.forEach(c => {
+            if (c.diagnosis) {
+              diagCounts[c.diagnosis] = (diagCounts[c.diagnosis] || 0) + 1
+            }
+          })
+          setDiagnosisData(
+            Object.entries(diagCounts)
+              .map(([name, value]) => ({ name, value }))
+              .sort((a, b) => b.value - a.value)
+              .slice(0, 6)
+          )
+        }
 
-        // Statuts des rendez-vous
+        // Statuts rendez-vous
         const statusCounts = {}
         const statusLabels = {
           planned: 'Planifié', confirmed: 'Confirmé',
@@ -69,18 +82,35 @@ export default function DashboardPage() {
           Object.entries(statusCounts).map(([name, value]) => ({ name, value }))
         )
 
-        // Consultations par mois
-        const monthlyCounts = {}
-        const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun',
-                            'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
-        consultationsList.forEach(c => {
-          const date = new Date(c.created_at)
-          const key = monthNames[date.getMonth()]
-          monthlyCounts[key] = (monthlyCounts[key] || 0) + 1
-        })
-        setMonthlyData(
-          Object.entries(monthlyCounts).map(([month, count]) => ({ month, count }))
-        )
+        // Consultations par mois (médecin/admin seulement)
+        if (!isSecretary) {
+          const monthlyCounts = {}
+          const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun',
+                              'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
+          consultationsList.forEach(c => {
+            const date = new Date(c.created_at)
+            const key = monthNames[date.getMonth()]
+            monthlyCounts[key] = (monthlyCounts[key] || 0) + 1
+          })
+          setMonthlyData(
+            Object.entries(monthlyCounts).map(([month, count]) => ({ month, count }))
+          )
+        }
+
+        // Rendez-vous par mois (pour la secrétaire)
+        if (isSecretary) {
+          const monthlyCounts = {}
+          const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun',
+                              'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
+          appointmentsList.forEach(a => {
+            const date = new Date(a.scheduled_at)
+            const key = monthNames[date.getMonth()]
+            monthlyCounts[key] = (monthlyCounts[key] || 0) + 1
+          })
+          setMonthlyData(
+            Object.entries(monthlyCounts).map(([month, count]) => ({ month, count }))
+          )
+        }
 
       } catch (err) {
         console.error(err)
@@ -91,12 +121,25 @@ export default function DashboardPage() {
     fetchStats()
   }, [])
 
-  const cards = [
-    { label: 'Patients',       value: stats.patients,       icon: Users,        color: 'bg-blue-500',   to: '/patients'       },
-    { label: 'Rendez-vous',    value: stats.appointments,   icon: Calendar,     color: 'bg-green-500',  to: '/appointments'   },
-    { label: 'Consultations',  value: stats.consultations,  icon: Stethoscope,  color: 'bg-purple-500', to: '/consultations'  },
-    { label: 'IA consultée',   value: stats.ia_used,        icon: Brain,        color: 'bg-orange-500', to: '/consultations'  },
+  // Cartes selon le rôle
+  const allCards = [
+    { label: 'Patients',      value: stats.patients,      icon: Users,       color: 'bg-blue-500',   to: '/patients',      roles: ['admin', 'doctor', 'secretary'] },
+    { label: 'Rendez-vous',   value: stats.appointments,  icon: Calendar,    color: 'bg-green-500',  to: '/appointments',  roles: ['admin', 'doctor', 'secretary'] },
+    { label: 'Consultations', value: stats.consultations, icon: Stethoscope, color: 'bg-purple-500', to: '/consultations', roles: ['admin', 'doctor']              },
+    { label: 'IA consultée',  value: stats.ia_used,       icon: Brain,       color: 'bg-orange-500', to: '/consultations', roles: ['admin', 'doctor']              },
   ]
+
+  const cards = allCards.filter(c => c.roles.includes(user?.role))
+
+  // Accès rapides selon le rôle
+  const allQuickLinks = [
+    { label: 'Nouveau patient',       to: '/patients',       emoji: '👤', roles: ['admin', 'doctor', 'secretary'] },
+    { label: 'Nouveau rendez-vous',   to: '/appointments',   emoji: '📅', roles: ['admin', 'doctor', 'secretary'] },
+    { label: 'Nouvelle consultation', to: '/consultations',  emoji: '🩺', roles: ['admin', 'doctor']              },
+    { label: 'Nouvelle ordonnance',   to: '/prescriptions',  emoji: '💊', roles: ['admin', 'doctor']              },
+  ]
+
+  const quickLinks = allQuickLinks.filter(l => l.roles.includes(user?.role))
 
   if (loading) {
     return (
@@ -130,13 +173,13 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Graphiques ligne 1 */}
+      {/* Graphiques */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
 
-        {/* Consultations par mois */}
+        {/* Rendez-vous / Consultations par mois */}
         <div className="bg-white rounded-xl shadow-sm p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">
-            📈 Consultations par mois
+            📈 {isSecretary ? 'Rendez-vous par mois' : 'Consultations par mois'}
           </h2>
           {monthlyData.length > 0 ? (
             <ResponsiveContainer width="100%" height={250}>
@@ -144,10 +187,13 @@ export default function DashboardPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                <Tooltip
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
+                <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }} />
+                <Bar
+                  dataKey="count"
+                  name={isSecretary ? 'Rendez-vous' : 'Consultations'}
+                  fill={isSecretary ? '#10b981' : '#3b82f6'}
+                  radius={[4, 4, 0, 0]}
                 />
-                <Bar dataKey="count" name="Consultations" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -157,7 +203,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Statuts des rendez-vous */}
+        {/* Statuts rendez-vous */}
         <div className="bg-white rounded-xl shadow-sm p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">
             📅 Statuts des rendez-vous
@@ -167,22 +213,17 @@ export default function DashboardPage() {
               <PieChart>
                 <Pie
                   data={appointmentStatusData}
-                  cx="50%"
-                  cy="50%"
+                  cx="50%" cy="50%"
                   outerRadius={90}
                   dataKey="value"
-                  label={({ name, percent }) =>
-                    `${name} ${(percent * 100).toFixed(0)}%`
-                  }
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                   labelLine={false}
                 >
                   {appointmentStatusData.map((_, index) => (
                     <Cell key={index} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
-                />
+                <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }} />
               </PieChart>
             </ResponsiveContainer>
           ) : (
@@ -193,88 +234,75 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Graphiques ligne 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-
-        {/* Top diagnostics */}
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">
-            🩺 Pathologies les plus fréquentes
-          </h2>
-          {diagnosisData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={diagnosisData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis type="number" tick={{ fontSize: 12 }} allowDecimals={false} />
-                <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={100} />
-                <Tooltip
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
-                />
-                <Bar dataKey="value" name="Cas" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex items-center justify-center h-48 text-gray-400">
-              Aucune donnée disponible
-            </div>
-          )}
-        </div>
-
-        {/* Utilisation IA */}
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">
-            🤖 Utilisation du module IA
-          </h2>
-          {stats.consultations > 0 ? (
-            <>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={[
-                      { name: 'Avec IA', value: stats.ia_used },
-                      { name: 'Sans IA', value: stats.consultations - stats.ia_used },
-                    ]}
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    dataKey="value"
-                  >
-                    <Cell fill="#8b5cf6" />
-                    <Cell fill="#e5e7eb" />
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
-                  />
-                  <Legend />
-                </PieChart>
+      {/* Graphiques médecin/admin uniquement */}
+      {!isSecretary && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">
+              🩺 Pathologies les plus fréquentes
+            </h2>
+            {diagnosisData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={diagnosisData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis type="number" tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={100} />
+                  <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }} />
+                  <Bar dataKey="value" name="Cas" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                </BarChart>
               </ResponsiveContainer>
-              <div className="text-center mt-2">
-                <span className="text-2xl font-bold text-purple-600">
-                  {stats.consultations > 0
-                    ? Math.round((stats.ia_used / stats.consultations) * 100)
-                    : 0}%
-                </span>
-                <p className="text-gray-500 text-sm">des consultations utilisent l'IA</p>
+            ) : (
+              <div className="flex items-center justify-center h-48 text-gray-400">
+                Aucune donnée disponible
               </div>
-            </>
-          ) : (
-            <div className="flex items-center justify-center h-48 text-gray-400">
-              Aucune donnée disponible
-            </div>
-          )}
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">
+              🤖 Utilisation du module IA
+            </h2>
+            {stats.consultations > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: 'Avec IA', value: stats.ia_used },
+                        { name: 'Sans IA', value: stats.consultations - stats.ia_used },
+                      ]}
+                      cx="50%" cy="50%"
+                      outerRadius={80}
+                      dataKey="value"
+                    >
+                      <Cell fill="#8b5cf6" />
+                      <Cell fill="#e5e7eb" />
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="text-center mt-2">
+                  <span className="text-2xl font-bold text-purple-600">
+                    {Math.round((stats.ia_used / stats.consultations) * 100)}%
+                  </span>
+                  <p className="text-gray-500 text-sm">des consultations utilisent l'IA</p>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-center h-48 text-gray-400">
+                Aucune donnée disponible
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Accès rapides */}
       <div className="bg-white rounded-xl shadow-sm p-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">⚡ Accès rapides</h2>
-        <div className="grid grid-cols-4 gap-4">
-          {[
-            { label: 'Nouveau patient',      to: '/patients',       emoji: '👤' },
-            { label: 'Nouveau rendez-vous',  to: '/appointments',   emoji: '📅' },
-            { label: 'Nouvelle consultation',to: '/consultations',  emoji: '🩺' },
-            { label: 'Nouvelle ordonnance',  to: '/prescriptions',  emoji: '💊' },
-          ].map(({ label, to, emoji }) => (
+        <div className={`grid grid-cols-${quickLinks.length} gap-4`}>
+          {quickLinks.map(({ label, to, emoji }) => (
             <Link
               key={to}
               to={to}

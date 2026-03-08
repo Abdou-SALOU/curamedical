@@ -6,11 +6,12 @@ from django.conf import settings
 from .models import Consultation
 from .serializers import ConsultationSerializer
 from apps.appointments.models import Appointment
+from apps.users.permissions import IsDoctorOrAdmin
 
 
 class ConsultationListCreateView(generics.ListCreateAPIView):
     serializer_class = ConsultationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsDoctorOrAdmin]  # ← Secrétaire bloquée
 
     def get_queryset(self):
         queryset = Consultation.objects.select_related(
@@ -31,18 +32,15 @@ class ConsultationListCreateView(generics.ListCreateAPIView):
         except Appointment.DoesNotExist:
             serializer.save(doctor=self.request.user)
 
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
-
 
 class ConsultationDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Consultation.objects.all()
     serializer_class = ConsultationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsDoctorOrAdmin]  # ← Secrétaire bloquée
 
 
 @api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
+@permission_classes([IsDoctorOrAdmin])  # ← Secrétaire bloquée
 def get_ia_suggestions(request):
     symptoms = request.data.get('symptoms', [])
     if not symptoms:

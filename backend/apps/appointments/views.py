@@ -1,8 +1,8 @@
 from rest_framework import generics, permissions
 from rest_framework.response import Response
-from django.utils import timezone
 from .models import Appointment
 from .serializers import AppointmentSerializer
+from apps.users.permissions import IsDoctorOrAdmin
 
 class AppointmentListCreateView(generics.ListCreateAPIView):
     serializer_class = AppointmentSerializer
@@ -10,8 +10,7 @@ class AppointmentListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         queryset = Appointment.objects.select_related('patient', 'doctor')
-        
-        # Filtres
+
         doctor_id = self.request.query_params.get('doctor')
         date = self.request.query_params.get('date')
         status = self.request.query_params.get('status')
@@ -32,3 +31,12 @@ class AppointmentDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Appointment.objects.all()
     serializer_class = AppointmentSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def destroy(self, request, *args, **kwargs):
+        # Seuls médecins et admins peuvent supprimer
+        if request.user.role not in ['doctor', 'admin']:
+            return Response(
+                {'error': 'Seul un médecin peut supprimer un rendez-vous'},
+                status=403
+            )
+        return super().destroy(request, *args, **kwargs)

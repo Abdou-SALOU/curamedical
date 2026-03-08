@@ -9,6 +9,7 @@ import PatientsPage from './pages/PatientsPage'
 import AppointmentsPage from './pages/AppointmentsPage'
 import ConsultationsPage from './pages/ConsultationsPage'
 import PrescriptionsPage from './pages/PrescriptionsPage'
+import UnauthorizedPage from './pages/UnauthorizedPage'
 
 export default function App() {
   const { fetchMe, isAuthenticated } = useAuthStore()
@@ -21,21 +22,24 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/unauthorized" element={<UnauthorizedPage />} />
+
         <Route path="/" element={
-          <PrivateRoute><Layout><DashboardPage /></Layout></PrivateRoute>
+          <PrivateRoute path="/"><Layout><DashboardPage /></Layout></PrivateRoute>
         } />
         <Route path="/patients" element={
-          <PrivateRoute><Layout><PatientsPage /></Layout></PrivateRoute>
+          <PrivateRoute path="/patients"><Layout><PatientsPage /></Layout></PrivateRoute>
         } />
         <Route path="/appointments" element={
-          <PrivateRoute><Layout><AppointmentsPage /></Layout></PrivateRoute>
+          <PrivateRoute path="/appointments"><Layout><AppointmentsPage /></Layout></PrivateRoute>
         } />
         <Route path="/consultations" element={
-          <PrivateRoute><Layout><ConsultationsPage /></Layout></PrivateRoute>
+          <PrivateRoute path="/consultations"><Layout><ConsultationsPage /></Layout></PrivateRoute>
         } />
         <Route path="/prescriptions" element={
-          <PrivateRoute><Layout><PrescriptionsPage /></Layout></PrivateRoute>
+          <PrivateRoute path="/prescriptions"><Layout><PrescriptionsPage /></Layout></PrivateRoute>
         } />
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
