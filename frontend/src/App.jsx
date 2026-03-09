@@ -9,6 +9,7 @@ import PatientsPage from './pages/PatientsPage'
 import AppointmentsPage from './pages/AppointmentsPage'
 import ConsultationsPage from './pages/ConsultationsPage'
 import PrescriptionsPage from './pages/PrescriptionsPage'
+import AdminPage from './pages/AdminPage'
 import UnauthorizedPage from './pages/UnauthorizedPage'
 
 export default function App() {
@@ -23,7 +24,6 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/unauthorized" element={<UnauthorizedPage />} />
-
         <Route path="/" element={
           <PrivateRoute path="/"><Layout><DashboardPage /></Layout></PrivateRoute>
         } />
@@ -39,7 +39,9 @@ export default function App() {
         <Route path="/prescriptions" element={
           <PrivateRoute path="/prescriptions"><Layout><PrescriptionsPage /></Layout></PrivateRoute>
         } />
-
+        <Route path="/admin" element={
+          <PrivateRoute path="/admin"><Layout><AdminPage /></Layout></PrivateRoute>
+        } />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

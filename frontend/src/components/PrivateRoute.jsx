@@ -1,9 +1,8 @@
 import { Navigate } from 'react-router-dom'
 import useAuthStore from '../store/authStore'
 
-// Pages accessibles par rôle
 const ROLE_ACCESS = {
-  admin:     ['/', '/patients', '/appointments', '/consultations', '/prescriptions'],
+  admin:     ['/', '/patients', '/appointments', '/consultations', '/prescriptions', '/admin'],
   doctor:    ['/', '/patients', '/appointments', '/consultations', '/prescriptions'],
   secretary: ['/', '/patients', '/appointments'],
 }

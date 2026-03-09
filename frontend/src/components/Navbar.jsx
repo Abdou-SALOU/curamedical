@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import useAuthStore from '../store/authStore'
 import {
   LayoutDashboard, Users, Calendar,
-  Stethoscope, FileText, LogOut
+  Stethoscope, FileText, LogOut, Settings
 } from 'lucide-react'
 
 const ALL_LINKS = [
@@ -11,6 +11,7 @@ const ALL_LINKS = [
   { to: '/appointments',   icon: Calendar,        label: 'Rendez-vous',     roles: ['admin', 'doctor', 'secretary'] },
   { to: '/consultations',  icon: Stethoscope,     label: 'Consultations',   roles: ['admin', 'doctor']              },
   { to: '/prescriptions',  icon: FileText,        label: 'Ordonnances',     roles: ['admin', 'doctor']              },
+  { to: '/admin',          icon: Settings,        label: 'Administration',  roles: ['admin']                        },
 ]
 
 export default function Navbar() {
@@ -23,14 +24,13 @@ export default function Navbar() {
     navigate('/login')
   }
 
-  // Filtrer les liens selon le rôle
   const links = ALL_LINKS.filter(link =>
     !user || link.roles.includes(user.role)
   )
 
   const roleLabels = {
-    admin: '👑 Administrateur',
-    doctor: '🩺 Médecin',
+    admin:     '👑 Administrateur',
+    doctor:    '🩺 Médecin',
     secretary: '📋 Secrétaire',
   }
 
