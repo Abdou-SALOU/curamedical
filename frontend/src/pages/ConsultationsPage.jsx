@@ -3,11 +3,7 @@ import api from '../api/axios'
 import { FilePlus, Brain, AlertTriangle } from 'lucide-react'
 
 const SYMPTOMS_LIST = [
-  'fever', 'cough', 'fatigue', 'headache', 'nausea',
-  'vomiting', 'shortness_of_breath', 'chest_pain', 'stomach_pain',
-  'joint_pain', 'rash', 'night_sweats', 'weight_loss',
-  'frequent_urination', 'increased_thirst', 'sensitivity_to_light',
-  'stiff_neck', 'runny_nose', 'abdominal_pain', 'jaundice'
+  'fever', 'cough', 'fatigue', 'difficulty_breathing'
 ]
 
 const EMPTY_FORM = {
@@ -20,11 +16,19 @@ const EMPTY_FORM = {
   ia_used: false
 }
 
+const EMPTY_IA_PARAMS = {
+  age: 30,
+  gender: 'M',
+  blood_pressure: 'Normal',
+  cholesterol: 'Normal'
+}
+
 export default function ConsultationsPage() {
   const [consultations, setConsultations] = useState([])
   const [appointments, setAppointments] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
+  const [iaParams, setIaParams] = useState(EMPTY_IA_PARAMS)
   const [loading, setLoading] = useState(false)
   const [iaLoading, setIaLoading] = useState(false)
   const [iaSuggestions, setIaSuggestions] = useState(null)
@@ -35,7 +39,7 @@ export default function ConsultationsPage() {
   const fetchAll = async () => {
     const [consults, appts] = await Promise.all([
       api.get('/api/consultations/'),
-      api.get('/api/appointments/?status=confirmed'),
+      api.get('/api/appointments/'),
     ])
     setConsultations(consults.data.results || consults.data)
     setAppointments(appts.data.results || appts.data)
@@ -63,7 +67,11 @@ export default function ConsultationsPage() {
     setIaSuggestions(null)
     try {
       const { data } = await api.post('/api/consultations/ia/suggest/', {
-        symptoms: form.symptoms
+        symptoms: form.symptoms,
+        age: iaParams.age,
+        gender: iaParams.gender,
+        blood_pressure: iaParams.blood_pressure,
+        cholesterol: iaParams.cholesterol,
       })
       setIaSuggestions(data.suggestions)
       setForm(prev => ({
@@ -80,17 +88,26 @@ export default function ConsultationsPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-     console.log('FORM DATA:', form)  // ← ajoutez cette ligne
     setLoading(true)
     setError('')
     try {
-      await api.post('/api/consultations/', form)
+      const payload = {
+        appointment: parseInt(form.appointment),
+        symptoms: form.symptoms,
+        clinical_exam: form.clinical_exam,
+        diagnosis: form.diagnosis,
+        notes: form.notes,
+        ia_suggestions: form.ia_suggestions,
+        ia_used: form.ia_used,
+      }
+      await api.post('/api/consultations/', payload)
       setShowForm(false)
       setForm(EMPTY_FORM)
+      setIaParams(EMPTY_IA_PARAMS)
       setIaSuggestions(null)
       fetchAll()
     } catch (err) {
-      setError('Erreur lors de la création de la consultation.')
+      setError(JSON.stringify(err.response?.data) || 'Erreur lors de la création.')
     } finally {
       setLoading(false)
     }
@@ -176,7 +193,9 @@ export default function ConsultationsPage() {
                 <p className="text-gray-500 text-xs mb-1">Symptômes</p>
                 <div className="flex flex-wrap gap-1">
                   {(selected.symptoms || []).map(s => (
-                    <span key={s} className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs">{s}</span>
+                    <span key={s} className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs">
+                      {s.replace(/_/g, ' ')}
+                    </span>
                   ))}
                 </div>
               </div>
@@ -216,7 +235,10 @@ export default function ConsultationsPage() {
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-gray-800">Nouvelle consultation</h2>
-              <button onClick={() => { setShowForm(false); setIaSuggestions(null) }} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+              <button
+                onClick={() => { setShowForm(false); setIaSuggestions(null) }}
+                className="text-gray-400 hover:text-gray-600 text-xl"
+              >✕</button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -271,7 +293,7 @@ export default function ConsultationsPage() {
                 </div>
               </div>
 
-              {/* Bouton IA */}
+              {/* Module IA */}
               <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
@@ -286,6 +308,55 @@ export default function ConsultationsPage() {
                   >
                     {iaLoading ? '⏳ Analyse...' : '🔍 Analyser les symptômes'}
                   </button>
+                </div>
+
+                {/* Paramètres patient pour l'IA */}
+                <div className="grid grid-cols-4 gap-3 mb-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Âge</label>
+                    <input
+                      type="number"
+                      min={1} max={120}
+                      value={iaParams.age}
+                      onChange={e => setIaParams({ ...iaParams, age: parseInt(e.target.value) })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Genre</label>
+                    <select
+                      value={iaParams.gender}
+                      onChange={e => setIaParams({ ...iaParams, gender: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="M">Masculin</option>
+                      <option value="F">Féminin</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Pression</label>
+                    <select
+                      value={iaParams.blood_pressure}
+                      onChange={e => setIaParams({ ...iaParams, blood_pressure: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="Low">Basse</option>
+                      <option value="Normal">Normale</option>
+                      <option value="High">Haute</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Cholestérol</label>
+                    <select
+                      value={iaParams.cholesterol}
+                      onChange={e => setIaParams({ ...iaParams, cholesterol: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="Low">Bas</option>
+                      <option value="Normal">Normal</option>
+                      <option value="High">Élevé</option>
+                    </select>
+                  </div>
                 </div>
 
                 {/* Avertissement */}
@@ -347,7 +418,7 @@ export default function ConsultationsPage() {
                 />
               </div>
 
-              {/* Diagnostic retenu */}
+              {/* Diagnostic */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Diagnostic retenu <span className="text-red-500">*</span>

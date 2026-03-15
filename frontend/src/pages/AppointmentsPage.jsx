@@ -35,7 +35,7 @@ export default function AppointmentsPage() {
     const [appts, pts, users] = await Promise.all([
       api.get(`/api/appointments/${params}`),
       api.get('/api/patients/'),
-      api.get('/api/users/'),
+      api.get('/api/users/doctors/'),
     ])
     setAppointments(appts.data.results || appts.data)
     setPatients(pts.data.results || pts.data)

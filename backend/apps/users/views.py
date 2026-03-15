@@ -14,7 +14,7 @@ class MeView(APIView):
 
 class UserListCreateView(generics.ListCreateAPIView):
     queryset = User.objects.all()
-    permission_classes = [IsAdmin]  # ← Admin uniquement
+    permission_classes = [IsAdmin]
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -24,4 +24,12 @@ class UserListCreateView(generics.ListCreateAPIView):
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [IsAdmin]  # ← Admin uniquement
+    permission_classes = [IsAdmin]
+
+class DoctorListView(generics.ListAPIView):
+    """Liste des médecins — accessible à tous les utilisateurs connectés"""
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return User.objects.filter(role='doctor', is_active=True)

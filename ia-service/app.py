@@ -5,30 +5,36 @@ import os
 
 app = Flask(__name__)
 
-# Chargement du modèle (sera créé par train.py)
-MODEL_PATH = 'model/classifier.pkl'
-SYMPTOMS_PATH = 'model/symptoms_list.pkl'
-DISEASES_PATH = 'model/diseases_list.pkl'
+MODEL_PATH    = 'model/classifier.pkl'
+ENCODER_PATH  = 'model/label_encoder.pkl'
+FEATURES_PATH = 'model/features_list.pkl'
 
-model = None
-symptoms_list = []
-diseases_list = []
+model    = None
+encoder  = None
+features = []
+
+def train_model():
+    """Entraîne le modèle si absent"""
+    print("🔄 Modèle absent — entraînement en cours...")
+    import subprocess
+    subprocess.run(['python', 'train.py'], check=True)
+    print("✅ Entraînement terminé !")
 
 def load_model():
-    global model, symptoms_list, diseases_list
-    if os.path.exists(MODEL_PATH):
-        model = joblib.load(MODEL_PATH)
-        symptoms_list = joblib.load(SYMPTOMS_PATH)
-        diseases_list = joblib.load(DISEASES_PATH)
-        print(f"✅ Modèle chargé — {len(symptoms_list)} symptômes, {len(diseases_list)} maladies")
-    else:
-        print("⚠️  Modèle non trouvé — lancez train.py d'abord")
+    global model, encoder, features
+    if not os.path.exists(MODEL_PATH):
+        train_model()
+    model    = joblib.load(MODEL_PATH)
+    encoder  = joblib.load(ENCODER_PATH)
+    features = joblib.load(FEATURES_PATH)
+    print(f"✅ Modèle chargé — {len(encoder.classes_)} maladies")
 
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({
         'status': 'ok',
-        'model_loaded': model is not None
+        'model_loaded': model is not None,
+        'diseases_count': len(encoder.classes_) if encoder else 0
     })
 
 @app.route('/predict', methods=['POST'])
@@ -36,41 +42,60 @@ def predict():
     if model is None:
         return jsonify({'error': 'Modèle non chargé'}), 503
 
-    data = request.get_json()
-    symptoms_input = data.get('symptoms', [])
+    data        = request.get_json()
+    symptoms    = data.get('symptoms', [])
+    age         = data.get('age', 30)
+    gender      = data.get('gender', 'M')
+    bp          = data.get('blood_pressure', 'Normal')
+    cholesterol = data.get('cholesterol', 'Normal')
 
-    if not symptoms_input:
-        return jsonify({'error': 'Aucun symptôme fourni'}), 400
+    fever     = 1 if 'fever'                in symptoms else 0
+    cough     = 1 if 'cough'                in symptoms else 0
+    fatigue   = 1 if 'fatigue'              in symptoms else 0
+    breathing = 1 if 'difficulty_breathing' in symptoms else 0
 
-    # Encodage binaire des symptômes
-    input_vector = np.zeros(len(symptoms_list))
-    for symptom in symptoms_input:
-        symptom_clean = symptom.lower().strip()
-        if symptom_clean in symptoms_list:
-            idx = symptoms_list.index(symptom_clean)
-            input_vector[idx] = 1
+    gender_enc = 1 if gender == 'M' else 0
+    bp_enc     = {'Low': 0, 'Normal': 1, 'High': 2}.get(bp, 1)
+    chol_enc   = {'Low': 0, 'Normal': 1, 'High': 2}.get(cholesterol, 1)
 
-    # Prédiction avec probabilités
-    probabilities = model.predict_proba([input_vector])[0]
+    def age_group(a):
+        if a < 18: return 0
+        if a < 35: return 1
+        if a < 50: return 2
+        if a < 65: return 3
+        return 4
+
+    input_vector = np.array([[
+        fever, cough, fatigue, breathing,
+        gender_enc, bp_enc, chol_enc, age_group(age)
+    ]])
+
+    probabilities = model.predict_proba(input_vector)[0]
     top_3_indices = np.argsort(probabilities)[-3:][::-1]
 
     suggestions = []
     for idx in top_3_indices:
         if probabilities[idx] > 0:
             suggestions.append({
-                'disease': diseases_list[idx],
+                'disease':    encoder.classes_[idx],
                 'confidence': round(float(probabilities[idx]) * 100, 1)
             })
 
     return jsonify({
         'suggestions': suggestions,
-        'disclaimer': 'Outil d\'aide — ne remplace pas le diagnostic médical'
+        'disclaimer': "Outil d'aide — ne remplace pas le diagnostic médical"
     })
 
 @app.route('/symptoms', methods=['GET'])
 def get_symptoms():
-    """Retourne la liste de tous les symptômes disponibles"""
-    return jsonify({'symptoms': symptoms_list})
+    return jsonify({
+        'symptoms': ['fever', 'cough', 'fatigue', 'difficulty_breathing'],
+        'other_params': {
+            'gender':         ['M', 'F'],
+            'blood_pressure': ['Low', 'Normal', 'High'],
+            'cholesterol':    ['Low', 'Normal', 'High'],
+        }
+    })
 
 if __name__ == '__main__':
     load_model()

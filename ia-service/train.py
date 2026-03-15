@@ -1,73 +1,92 @@
-"""
-Script d'entraînement du modèle de classification des symptômes.
-Dataset : symptom_disease dataset (Kaggle public)
-Lancer avec : python train.py
-"""
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.preprocessing import LabelEncoder
 import joblib
 import os
 
 os.makedirs('model', exist_ok=True)
 
-# Dataset embarqué (version simplifiée pour démarrer)
-# En production : remplacer par le vrai dataset Kaggle
-DATA = {
-    'symptoms': [
-        ['fever', 'cough', 'fatigue'],
-        ['fever', 'cough', 'shortness_of_breath'],
-        ['headache', 'fever', 'stiff_neck'],
-        ['stomach_pain', 'nausea', 'vomiting'],
-        ['chest_pain', 'shortness_of_breath', 'fatigue'],
-        ['fever', 'rash', 'joint_pain'],
-        ['cough', 'night_sweats', 'weight_loss'],
-        ['frequent_urination', 'fatigue', 'increased_thirst'],
-        ['headache', 'nausea', 'sensitivity_to_light'],
-        ['fever', 'cough', 'runny_nose'],
-        ['chest_pain', 'fever', 'cough'],
-        ['abdominal_pain', 'fever', 'jaundice'],
-    ],
-    'disease': [
-        'Grippe', 'Pneumonie', 'Méningite',
-        'Gastro-entérite', 'Insuffisance cardiaque', 'Dengue',
-        'Tuberculose', 'Diabète', 'Migraine',
-        'Rhume', 'Pleurésie', 'Hépatite',
-    ]
-}
+# ── 1. Chargement du dataset ──────────────────────────────────────────────────
+df = pd.read_csv('data/Disease_symptom_and_patient_profile_dataset.csv')
+print(f"✅ Dataset chargé : {len(df)} lignes, {df['Disease'].nunique()} maladies")
 
-# Construction du dataset
-all_symptoms = list(set(
-    s for symptoms in DATA['symptoms'] for s in symptoms
-))
-all_symptoms.sort()
+# ── 2. Nettoyage ──────────────────────────────────────────────────────────────
+df = df.dropna()
+df.columns = df.columns.str.strip()
 
-X = []
-for symptoms in DATA['symptoms']:
-    vector = [1 if s in symptoms else 0 for s in all_symptoms]
-    X.append(vector)
+# ── 3. Encodage des features ──────────────────────────────────────────────────
 
-y = DATA['disease']
-X = np.array(X)
+# Binaire Yes/No
+binary_cols = ['Fever', 'Cough', 'Fatigue', 'Difficulty Breathing']
+for col in binary_cols:
+    df[col] = df[col].map({'Yes': 1, 'No': 0})
 
-# Entraînement
+# Genre
+df['Gender'] = df['Gender'].map({'Male': 1, 'Female': 0})
+
+# Pression artérielle
+df['Blood Pressure'] = df['Blood Pressure'].map({
+    'Low': 0, 'Normal': 1, 'High': 2
+})
+
+# Cholestérol
+df['Cholesterol Level'] = df['Cholesterol Level'].map({
+    'Low': 0, 'Normal': 1, 'High': 2
+})
+
+# Tranche d'âge
+def age_group(age):
+    if age < 18:   return 0  # enfant
+    if age < 35:   return 1  # jeune adulte
+    if age < 50:   return 2  # adulte
+    if age < 65:   return 3  # senior
+    return 4                 # âgé
+
+df['Age Group'] = df['Age'].apply(age_group)
+
+# ── 4. Features et cible ──────────────────────────────────────────────────────
+FEATURES = [
+    'Fever', 'Cough', 'Fatigue', 'Difficulty Breathing',
+    'Gender', 'Blood Pressure', 'Cholesterol Level', 'Age Group'
+]
+
+X = df[FEATURES]
+y = df['Disease']
+
+# ── 5. Encodage des labels ────────────────────────────────────────────────────
+le = LabelEncoder()
+y_encoded = le.fit_transform(y)
+
+# ── 6. Split train/test ───────────────────────────────────────────────────────
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
+    X, y_encoded, test_size=0.2, random_state=42
 )
 
-clf = RandomForestClassifier(n_estimators=100, random_state=42)
+# ── 7. Entraînement ───────────────────────────────────────────────────────────
+clf = RandomForestClassifier(
+    n_estimators=200,
+    max_depth=None,
+    min_samples_split=2,
+    random_state=42,
+    class_weight='balanced'  # gère le déséquilibre des classes
+)
 clf.fit(X_train, y_train)
 
-# Évaluation
+# ── 8. Évaluation ─────────────────────────────────────────────────────────────
 y_pred = clf.predict(X_test)
-print(f"✅ Précision du modèle : {accuracy_score(y_test, y_pred) * 100:.1f}%")
+accuracy = accuracy_score(y_test, y_pred)
+print(f"✅ Précision : {accuracy * 100:.1f}%")
+print(f"\n📊 Rapport de classification :")
+print(classification_report(y_test, y_pred, zero_division=0))
 
-# Sauvegarde
+# ── 9. Sauvegarde ─────────────────────────────────────────────────────────────
 joblib.dump(clf, 'model/classifier.pkl')
-joblib.dump(all_symptoms, 'model/symptoms_list.pkl')
-joblib.dump(list(clf.classes_), 'model/diseases_list.pkl')
+joblib.dump(le,  'model/label_encoder.pkl')
+joblib.dump(FEATURES, 'model/features_list.pkl')
 
-print(f"✅ Modèle sauvegardé — {len(all_symptoms)} symptômes")
-print(f"✅ Maladies : {list(clf.classes_)}")
+print(f"\n✅ Modèle sauvegardé !")
+print(f"   Features : {FEATURES}")
+print(f"   Maladies : {len(le.classes_)}")

@@ -146,17 +146,18 @@ export default function PatientsPage() {
             <div className="space-y-3 text-sm">
               <div className="text-center mb-4">
                 <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto text-2xl font-bold text-blue-600">
-                  {selected.first_name[0]}{selected.last_name[0]}
+                  {selected.first_name?.charAt(0) || '?'}{selected.last_name?.charAt(0) || '?'}
                 </div>
                 <p className="font-bold text-lg mt-2">{selected.full_name}</p>
                 <p className="text-gray-500">{selected.age} ans</p>
               </div>
               {[
-                ['CIN', selected.national_id],
-                ['Téléphone', selected.phone],
-                ['Email', selected.email || '—'],
-                ['Groupe sanguin', selected.blood_group || '—'],
-                ['Allergies', selected.allergies || 'Aucune'],
+                ['CIN',           selected.national_id              ],
+                ['Téléphone',     selected.phone                    ],
+                ['Email',         selected.email        || '—'      ],
+                ['Genre',         selected.gender === 'M' ? 'Masculin' : 'Féminin'],
+                ['Groupe sanguin',selected.blood_group  || '—'      ],
+                ['Allergies',     selected.allergies    || 'Aucune' ],
               ].map(([label, value]) => (
                 <div key={label} className="flex justify-between border-b border-gray-100 pb-2">
                   <span className="text-gray-500">{label}</span>
@@ -166,7 +167,9 @@ export default function PatientsPage() {
               {selected.medical_history && (
                 <div className="mt-3">
                   <p className="text-gray-500 mb-1">Antécédents</p>
-                  <p className="text-gray-700 bg-gray-50 p-2 rounded text-xs">{selected.medical_history}</p>
+                  <p className="text-gray-700 bg-gray-50 p-2 rounded text-xs">
+                    {selected.medical_history}
+                  </p>
                 </div>
               )}
             </div>
