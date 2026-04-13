@@ -10,13 +10,23 @@ from apps.users.permissions import IsDoctorOrAdmin
 
 class PrescriptionListCreateView(generics.ListCreateAPIView):
     serializer_class = PrescriptionSerializer
-    permission_classes = [IsDoctorOrAdmin]  # ← Secrétaire bloquée
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Prescription.objects.select_related(
+        user = self.request.user
+        queryset = Prescription.objects.select_related(
             'consultation__appointment__patient',
             'consultation__doctor'
         )
+
+        # Si l'utilisateur est un patient, il ne voit que ses propres ordonnances
+        if user.role == 'patient':
+            if hasattr(user, 'patient_profile'):
+                queryset = queryset.filter(consultation__appointment__patient=user.patient_profile)
+            else:
+                return Prescription.objects.none()
+
+        return queryset
 
 
 class PrescriptionDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -26,13 +36,19 @@ class PrescriptionDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 @api_view(['GET'])
-@permission_classes([IsDoctorOrAdmin])  # ← Secrétaire bloquée
+@permission_classes([permissions.IsAuthenticated])
 def download_prescription_pdf(request, pk):
     try:
         prescription = Prescription.objects.select_related(
             'consultation__appointment__patient',
             'consultation__doctor'
         ).get(pk=pk)
+        
+        # Sécurité : Un patient ne peut télécharger que son ordonnance
+        if request.user.role == 'patient':
+            if not hasattr(request.user, 'patient_profile') or prescription.consultation.appointment.patient != request.user.patient_profile:
+                return Response({'error': 'Accès interdit'}, status=403)
+                
     except Prescription.DoesNotExist:
         return Response({'error': 'Ordonnance introuvable'}, status=404)
 

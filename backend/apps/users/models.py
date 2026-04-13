@@ -8,6 +8,7 @@ class User(AbstractUser):
         ('admin', 'Administrateur'),
         ('doctor', 'Médecin'),
         ('secretary', 'Secrétaire'),
+        ('patient', 'Patient'),
     ]
 
     role = models.CharField(
@@ -36,3 +37,7 @@ class User(AbstractUser):
     @property
     def is_admin(self):
         return self.role == 'admin'
+
+    @property
+    def is_patient(self):
+        return self.role == 'patient'

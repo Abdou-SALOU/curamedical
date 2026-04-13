@@ -26,6 +26,12 @@ class Appointment(models.Model):
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default='planned'
     )
+    is_teleconsultation = models.BooleanField(
+        default=False, verbose_name='Téléconsultation'
+    )
+    teleconsultation_link = models.URLField(
+        blank=True, null=True, verbose_name='Lien Visio (Jitsi)'
+    )
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

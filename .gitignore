@@ -39,3 +39,11 @@ frontend/.env
 *.swo
 .DS_Store
 Thumbs.db
+# Fichiers ignores ajoutes automatiquement
+Final_Augmented_dataset_Diseases_and_Symptoms.csv
+ia-service/Fast_Dataset.csv
+ia-service/Final_Augmented_dataset_Diseases_and_Symptoms.csv
+database.sqlite
+.n8n/
+ia_logs.txt
+tmp_ia_logs.txt

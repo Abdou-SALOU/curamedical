@@ -13,6 +13,12 @@ class Patient(models.Model):
         ('F', 'Féminin'),
     ]
 
+    # Lien vers l'utilisateur (si le patient dispose d'un accès)
+    user = models.OneToOneField(
+        'users.User', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='patient_profile'
+    )
+
     # Identité
     first_name = models.CharField(max_length=100, verbose_name='Prénom')
     last_name = models.CharField(max_length=100, verbose_name='Nom')

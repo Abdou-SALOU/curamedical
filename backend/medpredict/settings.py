@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'apps.appointments',
     'apps.consultations',
     'apps.prescriptions',
+    'apps.chat',
 ]
 
 MIDDLEWARE = [
@@ -112,3 +113,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # URL du microservice IA
 IA_SERVICE_URL = config('IA_SERVICE_URL', default='http://ia-service:5000')
+
+# URL du Webhook n8n pour l'automatisation (envoi ordonnance/compte-rendu)
+N8N_WEBHOOK_URL = config('N8N_WEBHOOK_URL', default='https://n8n.example.com/webhook/prescriptions')
