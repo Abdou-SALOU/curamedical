@@ -1,0 +1,21 @@
+# Évite d'envoyer les fichiers inutiles au daemon Docker → build plus rapide
+
+# Dépendances (installées dans le conteneur, pas copiées depuis l'hôte)
+node_modules/
+
+# Artifacts de build
+dist/
+build/
+.cache/
+
+# Git
+.git/
+.gitignore
+
+# Docs
+*.md
+README*
+
+# Logs
+*.log
+npm-debug.log*

@@ -1,7 +1,10 @@
-from django.urls import path
-from .views import AppointmentListCreateView, AppointmentDetailView
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import RendezVousViewSet
+
+router = DefaultRouter()
+router.register(r'', RendezVousViewSet, basename='rendez-vous')
 
 urlpatterns = [
-    path('', AppointmentListCreateView.as_view(), name='appointment-list'),
-    path('<int:pk>/', AppointmentDetailView.as_view(), name='appointment-detail'),
+    path('', include(router.urls)),
 ]

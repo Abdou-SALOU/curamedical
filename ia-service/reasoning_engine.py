@@ -1,25 +1,12 @@
 import os
 
-import google.generativeai as genai
 from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv()
-# Charger aussi depuis la racine au cas ou
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
-GEMINI_KEY = os.getenv('GEMINI_API_KEY', '')
 GROQ_KEY = os.getenv('GROQ_API_KEY', '')
-
-# Initialisation Gemini
-if GEMINI_KEY:
-    try:
-        genai.configure(api_key=GEMINI_KEY)
-        gemini_model = genai.GenerativeModel('gemini-1.5-flash')
-    except Exception:
-        gemini_model = None
-else:
-    gemini_model = None
 
 # Initialisation Groq (Llama 3)
 if GROQ_KEY:
@@ -31,7 +18,7 @@ else:
     groq_client = None
 
 SYSTEM_PROMPT = """
-Tu es l'Assistant IA exclusif de "MedPredict", un logiciel de gestion pour les professionnels de santé.
+Tu es l'Assistant IA exclusif de "CuraMedical", un logiciel de gestion pour les professionnels de santé.
 L'utilisateur à qui tu t'adresses est un MÉDECIN, une SECRÉTAIRE MÉDICALE ou un ADMINISTRATEUR DE CABINET. Ce n'est JAMAIS le patient.
 
 Règles impératives :
@@ -42,8 +29,38 @@ Règles impératives :
 - Tu es un conseiller clinique et logiciel.
 """
 
+PATIENT_SYSTEM_PROMPT = """
+Tu es l'assistant médical de la Clinique CuraMedical. Tu parles directement à un PATIENT via WhatsApp.
 
-def local_reasoning(message, intent, extracted_name=None):
+Règles impératives :
+- Réponds en français, avec empathie, clarté et concision (2-4 phrases max).
+- Si le patient décrit des symptômes, aide-le à les préciser et oriente-le vers un médecin.
+- N'établis JAMAIS de diagnostic médical définitif. Propose des hypothèses générales uniquement.
+- En cas de symptômes graves (douleur thoracique, difficulté à respirer, perte de conscience) : appelle le 15 (SAMU) immédiatement.
+- Reste rassurant, bienveillant et professionnel.
+- Tu peux rappeler que la clinique est disponible pour prendre rendez-vous.
+"""
+
+
+def local_reasoning(message, intent, extracted_name=None, audience='staff'):
+    # ── Réponses patient (WhatsApp) ───────────────────────────────────────────
+    if audience == 'patient':
+        if intent == 'greetings':
+            return (
+                "Bonjour ! Je suis l'assistant médical de CuraMedical.\n"
+                "Décrivez vos symptômes (ex: fièvre, toux, douleur...) et je vous aiderai à les analyser.\n"
+                "Pour un rendez-vous ou une urgence, contactez directement la clinique."
+            )
+        if intent == 'thanks':
+            return "De rien ! N'hésitez pas si vous avez d'autres symptômes. Prenez soin de vous."
+        if intent in ('ia_symptoms', 'discussion'):
+            return "Je vous écoute. Pouvez-vous décrire vos symptômes en détail ?"
+        return (
+            "Je n'ai pas bien compris votre demande.\n"
+            "Essayez de décrire vos symptômes, par exemple : \"j'ai de la fièvre et mal à la gorge\"."
+        )
+
+    # ── Réponses staff (interface interne) ────────────────────────────────────
     if intent == 'patient_search':
         if extracted_name:
             return f"Je recherche le dossier de {extracted_name} pour vous afficher les informations les plus utiles."
@@ -65,7 +82,7 @@ def local_reasoning(message, intent, extracted_name=None):
         return "Avec plaisir. Je reste disponible pour la suite."
 
     if intent == 'greetings':
-        return "Bonjour. MedPredict est pret, dites-moi ce que vous souhaitez consulter ou creer."
+        return "Bonjour. CuraMedical est pret, dites-moi ce que vous souhaitez consulter ou creer."
 
     if intent == 'discussion':
         return "Je suis a votre ecoute. Dites-moi votre besoin clinique ou organisationnel."
@@ -73,39 +90,29 @@ def local_reasoning(message, intent, extracted_name=None):
     return f"Je prends en compte votre demande: {message}"
 
 
-def generate_smart_response(message, intent, extracted_name=None, clinic_context=None):
+def generate_smart_response(message, intent, extracted_name=None, clinic_context=None, audience='staff'):
+    system = PATIENT_SYSTEM_PROMPT if audience == 'patient' else SYSTEM_PROMPT
     prompt = (
-        f"{SYSTEM_PROMPT}\n\n"
-        f"Contexte applicatif: {clinic_context}\n"
-        f"Message utilisateur: {message}\n"
-        f"Intention détectée: {intent}\n"
-        f"Nom extrait: {extracted_name}\n\n"
-        "Génère une réponse courte, professionnelle et orientée action."
+        f"Contexte : {clinic_context}\n"
+        f"Message : {message}\n"
+        f"Intention : {intent}\n"
+        + (f"Nom extrait : {extracted_name}\n" if extracted_name else "")
+        + "Génère une réponse courte et adaptée."
     )
 
-    # 1. Tentative avec Meta Llama 3 via Groq (Priorité car demandé par l'utilisateur)
     if groq_client:
         try:
             chat_completion = groq_client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": system},
                     {"role": "user", "content": prompt}
                 ],
-                model="llama-3.3-70b-versatile",
+                model="llama-3.1-8b-instant",
                 temperature=0.7,
-                max_tokens=500
+                max_tokens=300
             )
             return chat_completion.choices[0].message.content
         except Exception as e:
-            print(f"Erreur Groq (Llama 3): {e}")
+            print(f"Erreur Groq (Llama 3): {e}", flush=True)
 
-    # 2. Fallback vers Gemini 1.5 Flash
-    if gemini_model:
-        try:
-            response = gemini_model.generate_content(prompt)
-            if getattr(response, 'text', None):
-                return response.text
-        except Exception as e:
-            print(f"Erreur Gemini: {e}")
-
-    return local_reasoning(message, intent, extracted_name)
+    return local_reasoning(message, intent, extracted_name, audience=audience)

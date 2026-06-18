@@ -1,20 +1,24 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import api from '../api/axios'
 import { toast } from '../store/toastStore'
 import { SkeletonTable, SkeletonPanel } from '../components/Skeleton'
 import ConfirmModal from '../components/ConfirmModal'
+import Pagination from '../components/Pagination'
 import { UserPlus, Search, Eye, Trash2, Phone, Mail, Droplets, ShieldAlert, X } from 'lucide-react'
 import useAuthStore from '../store/authStore'
 
+const PAGE_SIZE = 10
+
 const EMPTY_FORM = {
-  first_name: '', last_name: '', date_of_birth: '', gender: 'M',
-  national_id: '', phone: '', email: '', address: '',
-  blood_group: '', allergies: '', medical_history: '',
+  prenom: '', nom: '', date_naissance: '', sexe: 'M',
+  cin: '', telephone: '', email: '', adresse: '',
+  groupe_sanguin: '', allergies: '', antecedents_medicaux: '',
 }
 const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
 
 function getInitials(p) {
-  return `${p?.first_name?.[0] || ''}${p?.last_name?.[0] || ''}`.toUpperCase() || '?'
+  return `${p?.prenom?.[0] || ''}${p?.nom?.[0] || ''}`.toUpperCase() || '?'
 }
 
 const InputField = ({ label, children }) => (
@@ -29,7 +33,11 @@ export default function PatientsPage() {
   const isStaff = user?.role !== 'patient'
 
   const [patients, setPatients]     = useState([])
+  const [count, setCount]           = useState(0)
+  const [page, setPage]             = useState(1)
   const [search, setSearch]         = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
   const [showDrawer, setShowDrawer] = useState(false)
   const [form, setForm]             = useState(EMPTY_FORM)
   const [selected, setSelected]     = useState(null)
@@ -38,21 +46,41 @@ export default function PatientsPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [saving, setSaving]         = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
-  const debounceTimer = useRef(null)
 
-  // ── Fetch helpers ──────────────────────────────────────────────
-  const fetchPatients = useCallback(async (query = '') => {
-    try {
-      const { data } = await api.get(`/api/patients/?search=${encodeURIComponent(query)}`)
-      setPatients(data.results || data)
-    } catch {
-      toast.error('Impossible de charger la liste des patients.')
-    }
-  }, [])
-
+  // ── Recherche avec debounce ────────────────────────────────────
   useEffect(() => {
-    fetchPatients().finally(() => setListLoading(false))
-  }, [fetchPatients])
+    const timer = setTimeout(() => setDebouncedSearch(search), 350)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  // ── Chargement paginé côté serveur ─────────────────────────────
+  useEffect(() => {
+    let ignore = false
+    const charger = async () => {
+      try {
+        const { data } = await api.get(
+          `/api/patients/?page_size=${PAGE_SIZE}&page=${page}&search=${encodeURIComponent(debouncedSearch)}`
+        )
+        if (ignore) return
+        const results = data.results || data
+        // Page devenue vide (ex: dernier élément supprimé) → reculer d'une page
+        if (results.length === 0 && page > 1) {
+          setPage(p => Math.max(1, p - 1))
+          return
+        }
+        setPatients(results)
+        setCount(data.count ?? results.length)
+      } catch {
+        if (!ignore) toast.error('Impossible de charger la liste des patients.')
+      } finally {
+        if (!ignore) setListLoading(false)
+      }
+    }
+    charger()
+    return () => { ignore = true }
+  }, [page, debouncedSearch, refreshKey])
+
+  const refresh = () => setRefreshKey(k => k + 1)
 
   const fetchDetail = useCallback(async (id) => {
     setSelectedId(id)
@@ -67,12 +95,10 @@ export default function PatientsPage() {
     }
   }, [])
 
-  // ── Debounced search ───────────────────────────────────────────
+  // ── Search ─────────────────────────────────────────────────────
   const handleSearch = (e) => {
-    const val = e.target.value
-    setSearch(val)
-    clearTimeout(debounceTimer.current)
-    debounceTimer.current = setTimeout(() => fetchPatients(val), 350)
+    setSearch(e.target.value)
+    setPage(1)
   }
 
   // ── Create ─────────────────────────────────────────────────────
@@ -83,7 +109,7 @@ export default function PatientsPage() {
       await api.post('/api/patients/', form)
       setShowDrawer(false)
       setForm(EMPTY_FORM)
-      await fetchPatients(search)
+      refresh()
       toast.success('Patient ajouté avec succès !')
     } catch (err) {
       const detail = err.response?.data
@@ -96,46 +122,62 @@ export default function PatientsPage() {
     }
   }
 
+  // ── Archive ────────────────────────────────────────────────────
+  const handleArchive = async (id) => {
+    try {
+      await api.patch(`/api/patients/${id}/archiver/`)
+      refresh()
+      if (selectedId === id) { setSelected(null); setSelectedId(null) }
+      toast.success('Patient archivé.')
+    } catch {
+      toast.error("Impossible d'archiver ce patient.")
+    }
+  }
+
   // ── Delete ─────────────────────────────────────────────────────
   const handleDelete = async (id) => {
-    await api.delete(`/api/patients/${id}/`)
-    await fetchPatients(search)
-    if (selectedId === id) { setSelected(null); setSelectedId(null) }
-    toast.success('Dossier supprimé.')
+    try {
+      await api.delete(`/api/patients/${id}/`)
+      refresh()
+      if (selectedId === id) { setSelected(null); setSelectedId(null) }
+      toast.success('Dossier supprimé.')
+    } catch {
+      toast.error('Impossible de supprimer ce dossier.')
+    }
   }
 
   const setField = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
 
   return (
-    <div className="p-5 md:p-6 space-y-5 min-h-screen">
+    <div className="cm-page">
 
       {/* ── Page header ── */}
-      <section className="surface-panel rounded-3xl px-6 py-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="label-xs text-emerald-700">Dossiers patients</p>
-            <h1 className="section-title mt-1.5 text-3xl font-black text-slate-900">Gestion des patients</h1>
-            <p className="mt-1.5 text-sm text-slate-500 max-w-lg leading-relaxed">
-              Visualisez les dossiers actifs, recherchez en temps réel et ouvrez une fiche sanscutter votre workflow.
-            </p>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <span className="badge badge-emerald">{patients.length} patient{patients.length > 1 ? 's' : ''}</span>
-            {isStaff && (
-              <button onClick={() => setShowDrawer(true)} className="btn-primary">
+      <div className="cm-page-head">
+        <div>
+          <div className="cm-eyebrow">Dossiers patients</div>
+          <div className="cm-title">Gestion des patients</div>
+          <div className="cm-sub">{count} patient{count > 1 ? 's' : ''} enregistré{count > 1 ? 's' : ''}</div>
+        </div>
+        <div className="cm-row" style={{ gap: 12 }}>
+          {isStaff && (
+            <>
+              <Link to="/patients/trash" className="cm-btn cm-btn-ghost" style={{ textDecoration: 'none' }} title="Patients archivés">
+                <Trash2 size={15} /> Corbeille
+              </Link>
+              <button onClick={() => setShowDrawer(true)} className="cm-btn cm-btn-brand">
                 <UserPlus size={16} />
                 Nouveau patient
               </button>
-            )}
-          </div>
+            </>
+          )}
         </div>
-      </section>
+      </div>
 
       {/* ── Main grid ── */}
       <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] items-start">
 
         {/* Table card */}
-        <div className="surface-panel rounded-3xl overflow-hidden">
+        <div className="cm-card" style={{ padding: 0, overflow: 'hidden' }}>
           {/* Search bar */}
           <div className="px-5 py-4 border-b border-slate-100">
             <div className="relative">
@@ -173,20 +215,20 @@ export default function PatientsPage() {
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center text-sm font-bold text-emerald-700 shrink-0">
-                            {p.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'}
+                            {p.nom_complet?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'}
                           </div>
                           <div>
-                            <p className="text-sm font-semibold text-slate-900">{p.full_name}</p>
+                            <p className="text-sm font-semibold text-slate-900">{p.nom_complet}</p>
                             <p className="text-xs text-slate-400">{p.age ? `${p.age} ans` : '—'}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-3.5 text-sm text-slate-600">{p.date_of_birth || '—'}</td>
-                      <td className="px-5 py-3.5 text-sm text-slate-600">{p.national_id || '—'}</td>
-                      <td className="px-5 py-3.5 text-sm text-slate-600">{p.phone || '—'}</td>
+                      <td className="px-5 py-3.5 text-sm text-slate-600">{p.date_naissance || '—'}</td>
+                      <td className="px-5 py-3.5 text-sm text-slate-600">{p.cin || '—'}</td>
+                      <td className="px-5 py-3.5 text-sm text-slate-600">{p.telephone || '—'}</td>
                       <td className="px-5 py-3.5">
-                        {p.blood_group
-                          ? <span className="badge badge-rose">{p.blood_group}</span>
+                        {p.groupe_sanguin
+                          ? <span className="badge badge-rose">{p.groupe_sanguin}</span>
                           : <span className="text-slate-300 text-sm">—</span>}
                       </td>
                       <td className="px-5 py-3.5">
@@ -200,7 +242,7 @@ export default function PatientsPage() {
                           </button>
                           {isStaff && (
                             <button
-                              onClick={() => setConfirmDelete({ id: p.id, name: p.full_name })}
+                              onClick={() => setConfirmDelete({ id: p.id, name: p.nom_complet })}
                               className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-rose-100 hover:text-rose-700 text-slate-500 flex items-center justify-center transition-colors"
                               title="Supprimer"
                             >
@@ -226,12 +268,15 @@ export default function PatientsPage() {
               </table>
             </div>
           )}
+          {!listLoading && (
+            <Pagination count={count} pageSize={PAGE_SIZE} currentPage={page} onPageChange={setPage} />
+          )}
         </div>
 
         {/* Detail panel */}
         <aside
-          className="surface-panel rounded-3xl overflow-y-auto soft-scrollbar sticky top-6"
-          style={{ maxHeight: 'calc(100vh - 112px)' }}
+          className="cm-card soft-scrollbar sticky top-6"
+          style={{ maxHeight: 'calc(100vh - 112px)', overflow: 'hidden', overflowY: 'auto' }}
         >
           {detailLoading ? (
             <SkeletonPanel />
@@ -245,10 +290,10 @@ export default function PatientsPage() {
                 <div>
                   <p className="label-xs text-slate-400">Fiche patient</p>
                   <h2 className="section-title mt-1 text-xl font-black text-slate-900">
-                    {selected.first_name} {selected.last_name}
+                    {selected.prenom} {selected.nom}
                   </h2>
                   <p className="text-sm text-slate-500 mt-0.5">
-                    {selected.gender === 'M' ? 'Masculin' : 'Féminin'}
+                    {selected.sexe === 'M' ? 'Masculin' : 'Féminin'}
                     {selected.age ? ` · ${selected.age} ans` : ''}
                   </p>
                 </div>
@@ -258,20 +303,20 @@ export default function PatientsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-2xl bg-slate-50 p-3.5">
                   <p className="label-xs mb-1.5">CIN</p>
-                  <p className="text-sm font-semibold text-slate-900">{selected.national_id || '—'}</p>
+                  <p className="text-sm font-semibold text-slate-900">{selected.cin || '—'}</p>
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-3.5">
                   <p className="label-xs mb-1.5">Naissance</p>
-                  <p className="text-sm font-semibold text-slate-900">{selected.date_of_birth || '—'}</p>
+                  <p className="text-sm font-semibold text-slate-900">{selected.date_naissance || '—'}</p>
                 </div>
               </div>
 
               {/* Contact */}
               <div className="space-y-2">
                 {[
-                  { icon: Phone, val: selected.phone, fallback: 'Téléphone non renseigné', cls: 'text-emerald-600' },
+                  { icon: Phone, val: selected.telephone, fallback: 'Téléphone non renseigné', cls: 'text-emerald-600' },
                   { icon: Mail,  val: selected.email, fallback: 'Email non renseigné',    cls: 'text-indigo-500' },
-                  { icon: Droplets, val: selected.blood_group, fallback: 'Groupe sanguin non renseigné', cls: 'text-rose-500' },
+                  { icon: Droplets, val: selected.groupe_sanguin, fallback: 'Groupe sanguin non renseigné', cls: 'text-rose-500' },
                 ].map((item) => {
                   const { icon: ContactIcon, val, fallback, cls } = item
                   return (
@@ -291,8 +336,8 @@ export default function PatientsPage() {
                 </div>
                 {[
                   { label: 'Allergies', val: selected.allergies, empty: 'Aucune allergie renseignée.' },
-                  { label: 'Antécédents médicaux', val: selected.medical_history, empty: 'Aucun antécédent saisi.' },
-                  { label: 'Adresse', val: selected.address, empty: 'Adresse non renseignée.' },
+                  { label: 'Antécédents médicaux', val: selected.antecedents_medicaux, empty: 'Aucun antécédent saisi.' },
+                  { label: 'Adresse', val: selected.adresse, empty: 'Adresse non renseignée.' },
                 ].map(({ label, val, empty }) => (
                   <div key={label} className="mb-3 last:mb-0">
                     <p className="label-xs mb-1">{label}</p>
@@ -303,12 +348,21 @@ export default function PatientsPage() {
 
               {/* Delete */}
               {isStaff && (
-                <button
-                  onClick={() => setConfirmDelete({ id: selected.id, name: `${selected.first_name} ${selected.last_name}` })}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 transition-colors"
-                >
-                  <Trash2 size={15} /> Supprimer le dossier
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => handleArchive(selected.id)}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">archive</span>
+                    Archiver le dossier
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete({ id: selected.id, name: `${selected.prenom} ${selected.nom}` })}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 transition-colors"
+                  >
+                    <Trash2 size={15} /> Supprimer définitivement
+                  </button>
+                </div>
               )}
             </div>
           ) : (
@@ -348,19 +402,19 @@ export default function PatientsPage() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <InputField label="Prénom *">
-                  <input type="text" required value={form.first_name} onChange={e => setField('first_name', e.target.value)} className="input-base" />
+                  <input type="text" required value={form.prenom} onChange={e => setField('prenom', e.target.value)} className="input-base" />
                 </InputField>
                 <InputField label="Nom *">
-                  <input type="text" required value={form.last_name} onChange={e => setField('last_name', e.target.value)} className="input-base" />
+                  <input type="text" required value={form.nom} onChange={e => setField('nom', e.target.value)} className="input-base" />
                 </InputField>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <InputField label="Date de naissance *">
-                  <input type="date" required value={form.date_of_birth} onChange={e => setField('date_of_birth', e.target.value)} className="input-base" />
+                  <input type="date" required value={form.date_naissance} onChange={e => setField('date_naissance', e.target.value)} className="input-base" />
                 </InputField>
                 <InputField label="Genre">
-                  <select value={form.gender} onChange={e => setField('gender', e.target.value)} className="input-base">
+                  <select value={form.sexe} onChange={e => setField('sexe', e.target.value)} className="input-base">
                     <option value="M">Masculin</option>
                     <option value="F">Féminin</option>
                   </select>
@@ -369,10 +423,10 @@ export default function PatientsPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <InputField label="CIN *">
-                  <input type="text" required value={form.national_id} onChange={e => setField('national_id', e.target.value)} className="input-base" />
+                  <input type="text" required value={form.cin} onChange={e => setField('cin', e.target.value)} className="input-base" />
                 </InputField>
                 <InputField label="Groupe sanguin">
-                  <select value={form.blood_group} onChange={e => setField('blood_group', e.target.value)} className="input-base">
+                  <select value={form.groupe_sanguin} onChange={e => setField('groupe_sanguin', e.target.value)} className="input-base">
                     <option value="">Non renseigné</option>
                     {BLOOD_TYPES.map(b => <option key={b} value={b}>{b}</option>)}
                   </select>
@@ -381,7 +435,7 @@ export default function PatientsPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <InputField label="Téléphone">
-                  <input type="tel" value={form.phone} onChange={e => setField('phone', e.target.value)} className="input-base" />
+                  <input type="tel" value={form.telephone} onChange={e => setField('telephone', e.target.value)} className="input-base" />
                 </InputField>
                 <InputField label="Email">
                   <input type="email" value={form.email} onChange={e => setField('email', e.target.value)} className="input-base" />
@@ -389,7 +443,7 @@ export default function PatientsPage() {
               </div>
 
               <InputField label="Adresse">
-                <input type="text" value={form.address} onChange={e => setField('address', e.target.value)} className="input-base" />
+                <input type="text" value={form.adresse} onChange={e => setField('adresse', e.target.value)} className="input-base" />
               </InputField>
 
               <InputField label="Allergies">
@@ -397,7 +451,7 @@ export default function PatientsPage() {
               </InputField>
 
               <InputField label="Antécédents médicaux">
-                <textarea rows={2} value={form.medical_history} onChange={e => setField('medical_history', e.target.value)} className="input-base resize-none" />
+                <textarea rows={2} value={form.antecedents_medicaux} onChange={e => setField('antecedents_medicaux', e.target.value)} className="input-base resize-none" />
               </InputField>
 
               {/* Actions */}

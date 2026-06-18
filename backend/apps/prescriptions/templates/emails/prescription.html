@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Votre ordonnance — CuraMedical</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f1f5f9;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">
+
+        <!-- Header -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#0f7b50 0%,#4eb583 100%);padding:36px 40px;text-align:center;">
+            <p style="margin:0 0 6px 0;font-size:11px;font-weight:700;letter-spacing:0.18em;color:rgba(255,255,255,0.7);text-transform:uppercase;">Plateforme médicale</p>
+            <h1 style="margin:0;font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-0.02em;">CuraMedical</h1>
+            <p style="margin:10px 0 0 0;font-size:13px;color:rgba(255,255,255,0.8);">Votre santé, notre priorité</p>
+          </td>
+        </tr>
+
+        <!-- Badge -->
+        <tr>
+          <td style="padding:28px 40px 0 40px;text-align:center;">
+            <span style="display:inline-block;background:#fef9c3;border:1px solid #fde047;color:#854d0e;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:6px 18px;border-radius:999px;">
+              💊 Nouvelle ordonnance disponible
+            </span>
+          </td>
+        </tr>
+
+        <!-- Greeting -->
+        <tr>
+          <td style="padding:24px 40px 0 40px;">
+            <p style="margin:0;font-size:17px;color:#1e293b;line-height:1.6;">
+              Bonjour <strong>{{ salutation }} {{ patient_nom }}</strong>,
+            </p>
+            <p style="margin:12px 0 0 0;font-size:15px;color:#475569;line-height:1.7;">
+              <strong style="color:#0f172a;">Dr. {{ medecin_nom }}</strong> vous a établi une ordonnance
+              en date du <strong style="color:#0f172a;">{{ date_str }}</strong>.
+              Le document PDF est joint à cet email.
+            </p>
+          </td>
+        </tr>
+
+        <!-- Medications card -->
+        <tr>
+          <td style="padding:24px 40px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+              <tr style="background:#f1f5f9;">
+                <td style="padding:14px 24px;border-bottom:1px solid #e2e8f0;">
+                  <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#64748b;">Médicaments prescrits</p>
+                </td>
+              </tr>
+              {% for med in medicaments_liste %}
+              <tr>
+                <td style="padding:14px 24px;border-bottom:1px solid #f1f5f9;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td>
+                        <p style="margin:0;font-size:14px;font-weight:700;color:#0f172a;">{{ med.medicament }} <span style="font-weight:400;color:#64748b;">{{ med.dosage }}</span></p>
+                        <p style="margin:3px 0 0 0;font-size:13px;color:#475569;">{{ med.frequence }} — {{ med.duree }}</p>
+                        {% if med.instructions %}
+                        <p style="margin:3px 0 0 0;font-size:12px;color:#94a3b8;font-style:italic;">{{ med.instructions }}</p>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              {% endfor %}
+              {% if notes_generales %}
+              <tr>
+                <td style="padding:14px 24px;background:#fffbeb;border-top:1px solid #fde68a;">
+                  <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#92400e;">Note du médecin</p>
+                  <p style="margin:5px 0 0 0;font-size:13px;color:#78350f;">{{ notes_generales }}</p>
+                </td>
+              </tr>
+              {% endif %}
+            </table>
+          </td>
+        </tr>
+
+        <!-- PDF notice -->
+        <tr>
+          <td style="padding:0 40px 28px 40px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;">
+              <tr>
+                <td width="32" valign="top" style="padding:16px 0 16px 20px;">
+                  <span style="font-size:20px;">📎</span>
+                </td>
+                <td style="padding:16px 12px 16px 8px;">
+                  <p style="margin:0;font-size:13px;font-weight:700;color:#1e40af;">Document joint</p>
+                  <p style="margin:4px 0 0 0;font-size:13px;color:#3b82f6;">L'ordonnance officielle au format PDF est annexée à cet email. Valable 3 mois à compter de la date d'émission.</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- CTA -->
+        {% if portal_url %}
+        <tr>
+          <td style="padding:0 40px 32px 40px;text-align:center;">
+            <a href="{{ portal_url }}" style="display:inline-block;background:#4eb583;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:700;">
+              Accéder à mon espace patient
+            </a>
+          </td>
+        </tr>
+        {% endif %}
+
+        <!-- Divider -->
+        <tr><td style="padding:0 40px;"><hr style="border:none;border-top:1px solid #f1f5f9;margin:0;"></td></tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="padding:24px 40px;text-align:center;">
+            <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6;">
+              En cas d'urgence, composez le <strong style="color:#ef4444;">15</strong> (SAMU) ou le <strong style="color:#ef4444;">112</strong>.
+            </p>
+            <p style="margin:12px 0 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">
+              Cet email a été généré automatiquement par la plateforme <strong>CuraMedical</strong>.<br>
+              Merci de ne pas y répondre directement.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

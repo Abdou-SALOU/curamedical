@@ -4,15 +4,15 @@ import api from '../api/axios'
 const useAuthStore = create((set) => ({
   user: null,
   isAuthenticated: !!localStorage.getItem('access_token'),
-  isLoading: !!localStorage.getItem('access_token'), // true until fetchMe resolves
+  isLoading: !!localStorage.getItem('access_token'),
 
   login: async (username, password) => {
-    const { data } = await api.post('/api/auth/login/', { username, password })
+    const { data } = await api.post('/api/token/', { username, password })
     localStorage.setItem('access_token', data.access)
     localStorage.setItem('refresh_token', data.refresh)
 
     const me = await api.get('/api/users/me/')
-    set({ user: me.data, isAuthenticated: true })
+    set({ user: me.data, isAuthenticated: true, isLoading: false })
     return me.data
   },
 

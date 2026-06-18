@@ -1,0 +1,30 @@
+# Évite d'envoyer les fichiers inutiles au daemon Docker → build plus rapide
+
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environnements virtuels
+venv/
+.venv/
+env/
+
+# Fichiers sensibles (ne jamais envoyer dans l'image)
+.env
+*.env
+
+# Git
+.git/
+.gitignore
+
+# Docs et logs
+*.md
+*.log
+*.txt
+!requirements.txt
+
+# Tests
+tests/
+test_*.py

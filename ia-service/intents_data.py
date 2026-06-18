@@ -1,7 +1,7 @@
 INTENTS = {
     'greetings': [
         "Bonjour", "Salut", "Hello", "Hey", "Bonsoir", "Coucou", "Hi", "Yo", "Salam",
-        "Comment ça va ?", "Salut l'ami", "Bonjour MedPredict", "Salut l'IA",
+        "Comment ça va ?", "Salut l'ami", "Bonjour CuraMedical", "Salut l'IA",
         "Est-ce que tu m'entends ?", "Il y a quelqu'un ?", "Bon matin", "Bon après-midi"
     ],
     'thanks': [
@@ -16,7 +16,7 @@ INTENTS = {
     'identity': [
         "Qui es-tu ?", "Tu es qui ?", "C'est quoi ton nom ?", "Comment tu t'appelles ?",
         "Que fais-tu ?", "À quoi sers-tu ?", "Présente-toi", "What are you?", 
-        "C'est quoi MedPredict Assistant?", "Tu es un humain ?", "Es-tu un robot ?"
+        "C'est quoi CuraMedical Assistant?", "Tu es un humain ?", "Es-tu un robot ?"
     ],
     'patient_search': [
         "Je cherche Jean Dupont", "Informations sur Sarah Benali", "Dossier de Pierre",

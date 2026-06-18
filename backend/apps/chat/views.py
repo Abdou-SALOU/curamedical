@@ -83,18 +83,29 @@ def handle_greetings(user, message):
             period = "Bon après-midi"
         else:
             period = "Bonsoir"
-        return (
-            f"{period}, **{name}** ! 👋\n\n"
-            f"Je suis l'assistant IA de MedPredict. Voici ce que je peux faire :\n\n"
-            f"• 🩺 Analyser des **symptômes** via l'IA\n"
-            f"• 👥 Rechercher un **patient** par nom\n"
-            f"• 📅 Consulter les prochains **rendez-vous**\n"
-            f"• 💊 Informations sur les **ordonnances**\n"
-            f"• 📋 Aide pour les **consultations**\n"
-            f"• 🏥 **Statistiques** du cabinet\n"
-            f"• ❓ **Comment faire** pour créer un patient, un RDV, etc.\n\n"
-            f"Posez-moi simplement votre question ! 😊"
-        )
+        if user.role == 'patient':
+            return (
+                f"{period}, **{name}** ! 👋\n\n"
+                f"Je suis l'assistant IA de CuraMedical. Voici ce que je peux faire pour vous :\n\n"
+                f"• 🩺 Analyser vos **symptômes** via l'IA\n"
+                f"• 📅 Consulter vos prochains **rendez-vous**\n"
+                f"• 💊 Informations sur vos **ordonnances**\n"
+                f"• 📋 Historique de vos **consultations**\n\n"
+                f"Décrivez vos symptômes ou posez-moi une question ! 😊"
+            )
+        else:
+            return (
+                f"{period}, **{name}** ! 👋\n\n"
+                f"Je suis l'assistant IA de CuraMedical. Voici ce que je peux faire :\n\n"
+                f"• 🩺 Analyser des **symptômes** via l'IA\n"
+                f"• 👥 Rechercher un **patient** par nom\n"
+                f"• 📅 Consulter les prochains **rendez-vous**\n"
+                f"• 💊 Informations sur les **ordonnances**\n"
+                f"• 📋 Aide pour les **consultations**\n"
+                f"• 🏥 **Statistiques** du cabinet\n"
+                f"• ❓ **Comment faire** pour créer un patient, un RDV, etc.\n\n"
+                f"Posez-moi simplement votre question ! 😊"
+            )
     return None
 
 
@@ -121,7 +132,7 @@ def handle_identity(user, message):
                    'presente-toi', 'presente toi', 'tu fais quoi', 'a quoi tu sers']
     if match_any(message, identity_kw):
         return (
-            "🤖 Je suis l'**Assistant IA de MedPredict**, votre compagnon médical intelligent !\n\n"
+            "🤖 Je suis l'**Assistant IA de CuraMedical**, votre compagnon médical intelligent !\n\n"
             "Je peux :\n"
             "• Rechercher des **patients** par nom et afficher leurs informations\n"
             "• Consulter les **rendez-vous** à venir\n"
@@ -140,7 +151,7 @@ def handle_help(user, message):
                'menu', 'commandes', 'liste', 'guide']
     if match_any(message, help_kw):
         return (
-            "🏥 **Guide complet de l'Assistant MedPredict :**\n\n"
+            "🏥 **Guide complet de l'Assistant CuraMedical :**\n\n"
             "**📋 Recherche & Informations :**\n"
             "• \"Informations sur Jean Dupont\"\n"
             "• \"Liste des patients\"\n"
@@ -244,9 +255,9 @@ def handle_how_to_prescription(user, message):
 
 
 def handle_patient_search(user, message):
-    """Recherche d'un patient par nom. Réservé au staff."""
-    if user.role == 'patient':
-        return "⚠️ En tant que patient, vous n'êtes pas autorisé à rechercher d'autres dossiers médicaux."
+    """Recherche d'un patient par nom. Réservé au staff médical."""
+    if user.role in ('patient', 'administrateur'):
+        return None
     
     name = extract_name(message)
     if not name:
@@ -275,22 +286,22 @@ def handle_patient_search(user, message):
     q = Q()
     for part in query_parts:
         q &= (
-            Q(first_name__icontains=part) |
-            Q(last_name__icontains=part) |
-            Q(national_id__icontains=part)
+            Q(prenom__icontains=part) |
+            Q(nom__icontains=part) |
+            Q(cin__icontains=part)
         )
 
-    patients = Patient.objects.filter(q, is_archived=False)[:5]
+    patients = Patient.objects.filter(q, est_archive=False)[:5]
 
     if not patients.exists():
         # Essayer une recherche plus large
         q_loose = Q()
         for part in query_parts:
             q_loose |= (
-                Q(first_name__icontains=part) |
-                Q(last_name__icontains=part)
+                Q(prenom__icontains=part) |
+                Q(nom__icontains=part)
             )
-        patients = Patient.objects.filter(q_loose, is_archived=False)[:5]
+        patients = Patient.objects.filter(q_loose, est_archive=False)[:5]
 
     if not patients.exists():
         return (
@@ -301,18 +312,18 @@ def handle_patient_search(user, message):
 
     if patients.count() == 1:
         p = patients.first()
-        lines = [f"👤 **Fiche patient : {p.first_name} {p.last_name}**\n"]
+        lines = [f"👤 **Fiche patient : {p.prenom} {p.nom}**\n"]
         fields = [
-            ("CIN", p.national_id),
-            ("Date de naissance", p.date_of_birth),
+            ("CIN", p.cin),
+            ("Date de naissance", p.date_naissance),
             ("Âge", f"{p.age} ans" if hasattr(p, 'age') and p.age else None),
-            ("Genre", "Masculin" if p.gender == 'M' else "Féminin"),
-            ("Téléphone", p.phone),
+            ("Genre", "Masculin" if p.sexe == 'M' else "Féminin"),
+            ("Téléphone", p.telephone),
             ("Email", p.email),
-            ("Adresse", p.address),
-            ("Groupe sanguin", p.blood_group),
+            ("Adresse", p.adresse),
+            ("Groupe sanguin", p.groupe_sanguin),
             ("Allergies", p.allergies),
-            ("Antécédents médicaux", p.medical_history),
+            ("Antécédents médicaux", p.antecedents_medicaux),
         ]
         for label, value in fields:
             if value:
@@ -320,10 +331,10 @@ def handle_patient_search(user, message):
 
         # Compter les RDV et consultations
         try:
-            from apps.appointments.models import Appointment
+            from apps.appointments.models import RendezVous as Appointment
             from apps.consultations.models import Consultation
             rdv_count = Appointment.objects.filter(patient=p).count()
-            consult_count = Consultation.objects.filter(appointment__patient=p).count()
+            consult_count = Consultation.objects.filter(patient=p).count()
             lines.append(f"\n📊 **Activité** : {rdv_count} rendez-vous, {consult_count} consultation(s)")
         except Exception:
             pass
@@ -333,22 +344,22 @@ def handle_patient_search(user, message):
         lines = [f"🔍 **{patients.count()} patient(s) trouvé(s) pour \"{name}\" :**\n"]
         for p in patients:
             age_str = f", {p.age} ans" if hasattr(p, 'age') and p.age else ""
-            lines.append(f"• **{p.first_name} {p.last_name}** — CIN: {p.national_id or '—'}{age_str}")
+            lines.append(f"• **{p.prenom} {p.nom}** — CIN: {p.cin or '—'}{age_str}")
         lines.append(f"\n💡 Précisez le nom complet pour voir le détail d'un patient.")
         return '\n'.join(lines)
 
 
 def handle_patient_list(user, message):
-    """Liste des patients. Réservé au staff."""
-    if user.role == 'patient':
-        return "⚠️ Accès refusé : la liste des patients est réservée au personnel médical."
+    """Liste des patients. Réservé au staff médical."""
+    if user.role in ('patient', 'administrateur'):
+        return None
 
     list_kw = ['liste', 'lister', 'tous les', 'combien', 'nombre', 'total', 'actif', 'actifs', 'enregistre']
     if match(message, list_kw, ['patient']):
         from apps.patients.models import Patient
-        total = Patient.objects.filter(is_archived=False).count()
-        archived = Patient.objects.filter(is_archived=True).count()
-        recent = Patient.objects.filter(is_archived=False).order_by('-created_at')[:5]
+        total = Patient.objects.filter(est_archive=False).count()
+        archived = Patient.objects.filter(est_archive=True).count()
+        recent = Patient.objects.filter(est_archive=False).order_by('-cree_le')[:5]
 
         lines = [f"👥 **Statistiques des patients :**\n"]
         lines.append(f"• **{total}** patient(s) actif(s)")
@@ -357,9 +368,9 @@ def handle_patient_list(user, message):
         if recent.exists():
             lines.append(f"\n📋 **Derniers patients ajoutés :**")
             for p in recent:
-                gender = "♂" if p.gender == 'M' else "♀"
+                gender = "♂" if p.sexe == 'M' else "♀"
                 age_str = f", {p.age} ans" if hasattr(p, 'age') and p.age else ""
-                lines.append(f"• {gender} **{p.first_name} {p.last_name}**{age_str}")
+                lines.append(f"• {gender} **{p.prenom} {p.nom}**{age_str}")
 
         lines.append(f"\n💡 Dites *\"info [nom]\"* pour voir le détail d'un patient.")
         return '\n'.join(lines)
@@ -367,47 +378,54 @@ def handle_patient_list(user, message):
 
 
 def handle_appointments_upcoming(user, message):
-    """Prochains rendez-vous."""
+    """Prochains rendez-vous. Réservé au staff médical et aux patients."""
+    if user.role == 'administrateur':
+        return None
+
     rdv_kw = ['rdv', 'rendez-vous', 'rendez vous', 'appointment', 'agenda', 'planning']
     upcoming_kw = ['prochain', 'prochains', 'a venir', 'avenir', 'futur', 'planifie', 'prevu', 'prevus']
 
     if match_any(message, rdv_kw):
-        from apps.appointments.models import Appointment
+        from apps.appointments.models import RendezVous as Appointment
+
+        base_qs = Appointment.objects.select_related('patient', 'medecin').filter(est_supprime=False)
 
         # Aujourd'hui ?
         today_kw = ['aujourd\'hui', "aujourd'hui", 'aujourdhui', 'today', 'ce jour', 'du jour']
         if match_any(message, today_kw):
             today = timezone.now().date()
-            appts = Appointment.objects.filter(
-                scheduled_at__date=today
-            ).order_by('scheduled_at')[:10]
+            qs = base_qs.filter(date_heure__date=today)
+            if user.role == 'patient' and hasattr(user, 'patient_profile'):
+                qs = qs.filter(patient=user.patient_profile)
+            appts = qs.order_by('date_heure')[:10]
             if not appts.exists():
                 return "📅 **Aucun rendez-vous prévu aujourd'hui.** Profitez-en pour mettre à jour vos dossiers ! 😊"
             lines = [f"📅 **Rendez-vous d'aujourd'hui ({today.strftime('%d/%m/%Y')}) :**\n"]
             for a in appts:
-                patient = a.patient.full_name if a.patient else '—'
-                doctor = f"Dr. {a.doctor.last_name}" if a.doctor else '—'
-                time = a.scheduled_at.strftime('%Hh%M')
-                status_map = {'planned': '🟡', 'confirmed': '🔵', 'in_progress': '🟣', 'completed': '✅', 'cancelled': '🔴'}
-                icon = status_map.get(a.status, '⚪')
-                lines.append(f"• {icon} **{time}** — {patient} avec {doctor} ({a.duration} min)")
+                patient = a.patient.nom_complet if a.patient else '—'
+                doctor = f"Dr. {a.medecin.last_name}" if a.medecin else '—'
+                time = a.date_heure.strftime('%Hh%M')
+                status_map = {'DEMANDE': '⏳', 'PLANIFIE': '🟡', 'CONFIRME': '🔵', 'EN_COURS': '🟣', 'TERMINE': '✅', 'ANNULE': '🔴'}
+                icon = status_map.get(a.statut, '⚪')
+                lines.append(f"• {icon} **{time}** — {patient} avec {doctor} ({a.duree} min)")
             return '\n'.join(lines)
 
         # Demain ?
         demain_kw = ['demain', 'tomorrow']
         if match_any(message, demain_kw):
             tomorrow = timezone.now().date() + timedelta(days=1)
-            appts = Appointment.objects.filter(
-                scheduled_at__date=tomorrow
-            ).order_by('scheduled_at')[:10]
+            qs = base_qs.filter(date_heure__date=tomorrow)
+            if user.role == 'patient' and hasattr(user, 'patient_profile'):
+                qs = qs.filter(patient=user.patient_profile)
+            appts = qs.order_by('date_heure')[:10]
             if not appts.exists():
                 return f"📅 **Aucun rendez-vous prévu pour demain** ({tomorrow.strftime('%d/%m/%Y')})."
             lines = [f"📅 **Rendez-vous de demain ({tomorrow.strftime('%d/%m/%Y')}) :**\n"]
             for a in appts:
-                patient = a.patient.full_name if a.patient else '—'
-                doctor = f"Dr. {a.doctor.last_name}" if a.doctor else '—'
-                time = a.scheduled_at.strftime('%Hh%M')
-                lines.append(f"• **{time}** — {patient} avec {doctor} ({a.duration} min)")
+                patient = a.patient.nom_complet if a.patient else '—'
+                doctor = f"Dr. {a.medecin.last_name}" if a.medecin else '—'
+                time = a.date_heure.strftime('%Hh%M')
+                lines.append(f"• **{time}** — {patient} avec {doctor} ({a.duree} min)")
             return '\n'.join(lines)
 
         # Cette semaine ?
@@ -415,33 +433,35 @@ def handle_appointments_upcoming(user, message):
         if match_any(message, semaine_kw):
             start = timezone.now().date()
             end = start + timedelta(days=7)
-            appts = Appointment.objects.filter(
-                scheduled_at__date__range=[start, end]
-            ).order_by('scheduled_at')[:15]
+            qs = base_qs.filter(date_heure__date__range=[start, end])
+            if user.role == 'patient' and hasattr(user, 'patient_profile'):
+                qs = qs.filter(patient=user.patient_profile)
+            appts = qs.order_by('date_heure')[:15]
             if not appts.exists():
                 return "📅 **Aucun rendez-vous prévu cette semaine.**"
             lines = [f"📅 **Rendez-vous de la semaine :**\n"]
             for a in appts:
-                patient = a.patient.full_name if a.patient else '—'
-                dt = a.scheduled_at.strftime('%d/%m %Hh%M')
-                lines.append(f"• **{dt}** — {patient} ({a.get_status_display()})")
+                patient = a.patient.nom_complet if a.patient else '—'
+                dt = a.date_heure.strftime('%d/%m %Hh%M')
+                lines.append(f"• **{dt}** — {patient} ({a.get_statut_display()})")
             return '\n'.join(lines)
 
         # Prochains par défaut
-        appts = Appointment.objects.filter(
-            status__in=['planned', 'confirmed']
-        ).order_by('scheduled_at')[:8]
+        qs = base_qs.filter(statut__in=['PLANIFIE','CONFIRME','EN_COURS'])
+        if user.role == 'patient' and hasattr(user, 'patient_profile'):
+            qs = qs.filter(patient=user.patient_profile)
+        appts = qs.order_by('date_heure')[:8]
 
         if not appts.exists():
             return "📅 **Aucun rendez-vous planifié pour le moment.**\n\nVoulez-vous en créer un ?"
 
         lines = [f"📅 **Prochains rendez-vous :**\n"]
         for a in appts:
-            patient = a.patient.full_name if a.patient else '—'
-            doctor = f"Dr. {a.doctor.last_name}" if a.doctor else '—'
-            dt = a.scheduled_at.strftime('%d/%m/%Y %Hh%M')
-            status_map = {'planned': 'Planifié', 'confirmed': 'Confirmé'}
-            status = status_map.get(a.status, a.status)
+            patient = a.patient.nom_complet if a.patient else '—'
+            doctor = f"Dr. {a.medecin.last_name}" if a.medecin else '—'
+            dt = a.date_heure.strftime('%d/%m/%Y %Hh%M')
+            status_map = {'DEMANDE': 'En attente', 'PLANIFIE': 'Planifié', 'CONFIRME': 'Confirmé', 'EN_COURS': 'En cours', 'TERMINE': 'Terminé', 'ANNULE': 'Annulé'}
+            status = status_map.get(a.statut, a.statut)
             lines.append(f"• **{patient}** avec {doctor}\n  📆 {dt} — _{status}_")
         lines.append(f"\n💡 Dites *\"RDV aujourd'hui\"* ou *\"RDV demain\"* pour filtrer.")
         return '\n'.join(lines)
@@ -450,7 +470,9 @@ def handle_appointments_upcoming(user, message):
 
 
 def handle_consultation_info(user, message):
-    """Informations sur les consultations."""
+    """Informations sur les consultations. Réservé au staff médical."""
+    if user.role == 'administrateur':
+        return None
     consult_kw = ['consultation', 'consultations', 'diagnostic', 'diagnostics']
     if match_any(message, consult_kw):
         from apps.consultations.models import Consultation
@@ -458,21 +480,25 @@ def handle_consultation_info(user, message):
         # Dernières consultations
         dernier_kw = ['derniere', 'dernieres', 'derniers', 'recente', 'recentes', 'recent', 'historique']
         if match_any(message, dernier_kw) or match(message, ['liste', 'lister', 'combien', 'nombre', 'total'], consult_kw):
-            total = Consultation.objects.count()
-            ia_count = Consultation.objects.filter(ia_used=True).count()
-            recent = Consultation.objects.order_by('-created_at')[:5]
+            qs = Consultation.objects.filter(est_supprime=False)
+            if user.role == 'patient' and hasattr(user, 'patient_profile'):
+                qs = qs.filter(patient=user.patient_profile)
+
+            total = qs.count()
+            ia_count = qs.filter(ia_utilisee=True).count()
+            recent = qs.select_related('patient').order_by('-date_consultation')[:5]
 
             lines = [f"📋 **Statistiques des consultations :**\n"]
             lines.append(f"• **{total}** consultation(s) au total")
             lines.append(f"• **{ia_count}** avec assistance IA ({round(ia_count/max(total,1)*100)}%)")
 
-            if recent.exists():
+            if recent:
                 lines.append(f"\n🕐 **Dernières consultations :**")
                 for c in recent:
-                    patient = c.patient_name or '—'
-                    date = c.created_at.strftime('%d/%m/%Y')
-                    ia = "🤖" if c.ia_used else ""
-                    lines.append(f"• {ia} **{patient}** — {c.diagnosis or '—'} ({date})")
+                    patient = c.patient.nom_complet if c.patient else '—'
+                    date = c.date_consultation.strftime('%d/%m/%Y')
+                    ia = "🤖" if c.ia_utilisee else ""
+                    lines.append(f"• {ia} **{patient}** — {c.diagnostic or '—'} ({date})")
 
             return '\n'.join(lines)
 
@@ -490,22 +516,28 @@ def handle_consultation_info(user, message):
 
 
 def handle_prescription_info(user, message):
-    """Informations sur les ordonnances."""
+    """Informations sur les ordonnances. Réservé au staff médical."""
+    if user.role == 'administrateur':
+        return None
     rx_kw = ['ordonnance', 'ordonnances', 'prescription', 'prescriptions', 'medicament', 'medicaments',
              'traitement', 'traitements', 'posologie']
     if match_any(message, rx_kw):
         from apps.prescriptions.models import Prescription
 
-        total = Prescription.objects.count()
-        recent = Prescription.objects.order_by('-created_at')[:5]
+        qs = Prescription.objects.filter(est_supprime=False)
+        if user.role == 'patient' and hasattr(user, 'patient_profile'):
+            qs = qs.filter(patient=user.patient_profile)
+
+        total = qs.count()
+        recent = qs.select_related('patient').prefetch_related('lignes').order_by('-cree_le')[:5]
 
         lines = [f"💊 **Ordonnances — {total} enregistrée(s) :**\n"]
 
-        if recent.exists():
+        if recent:
             for p in recent:
-                patient = p.patient_name or '—'
-                date = p.created_at.strftime('%d/%m/%Y')
-                meds = ', '.join([i.medication for i in p.items.all()[:3]]) if hasattr(p, 'items') else '—'
+                patient = p.patient.nom_complet if p.patient else '—'
+                date = p.cree_le.strftime('%d/%m/%Y')
+                meds = ', '.join([l.medicament for l in p.lignes.all()[:3]]) or '—'
                 lines.append(f"• **{patient}** ({date}) : {meds}")
         else:
             lines.append("Aucune ordonnance enregistrée pour le moment.")
@@ -516,76 +548,177 @@ def handle_prescription_info(user, message):
     return None
 
 
+# Labels français propres pour l'affichage (anglais → français lisible)
+_EN_SYMPTOM_LABELS_FR = {
+    'fever': 'Fièvre', 'cough': 'Toux', 'fatigue': 'Fatigue',
+    'shortness of breath': 'Essoufflement', 'headache': 'Maux de tête',
+    'nausea': 'Nausées', 'vomiting': 'Vomissements', 'diarrhea': 'Diarrhée',
+    'chills': 'Frissons', 'sweating': 'Transpiration', 'dizziness': 'Vertiges',
+    'joint pain': 'Douleurs articulaires', 'muscle pain': 'Douleurs musculaires',
+    'back pain': 'Mal de dos', 'low back pain': 'Douleur lombaire',
+    'chest tightness': 'Oppression thoracique', 'sharp chest pain': 'Douleur thoracique',
+    'skin rash': 'Éruption cutanée', 'itching of skin': 'Démangeaisons',
+    'weight loss': 'Perte de poids', 'recent weight loss': 'Perte de poids récente',
+    'weight gain': 'Prise de poids', 'decreased appetite': "Perte d'appétit",
+    'loss of sensation': 'Perte de sensation', 'weakness': 'Faiblesse',
+    'focal weakness': 'Faiblesse musculaire localisée', 'muscle weakness': 'Faiblesse musculaire',
+    'swollen lymph nodes': 'Ganglions gonflés', 'jaundice': 'Jaunisse',
+    'abdominal distention': 'Distension abdominale', 'stomach bloating': 'Ballonnements',
+    'upper abdominal pain': 'Douleur en haut du ventre',
+    'lower abdominal pain': 'Douleur au bas-ventre',
+    'sharp abdominal pain': 'Douleur abdominale', 'burning abdominal pain': 'Brûlures abdominales',
+    'constipation': 'Constipation', 'heartburn': "Brûlures d'estomac",
+    'blood in stool': 'Sang dans les selles', 'rectal bleeding': 'Saignement rectal',
+    'blood in urine': 'Sang dans les urines', 'frequent urination': 'Mictions fréquentes',
+    'painful urination': 'Douleur à la miction', 'retention of urine': 'Rétention urinaire',
+    'sore throat': 'Mal de gorge', 'nasal congestion': 'Nez bouché',
+    'coryza': 'Nez qui coule', 'sneezing': 'Éternuements',
+    'hoarse voice': 'Voix rauque', 'difficulty in swallowing': 'Difficulté à avaler',
+    'sinus congestion': 'Congestion des sinus', 'nosebleed': 'Saignement de nez',
+    'ear pain': 'Douleur à l\'oreille', 'ringing in ear': 'Acouphènes',
+    'diminished hearing': 'Perte d\'audition',
+    'eye redness': 'Yeux rouges', 'pain in eye': 'Douleur oculaire',
+    'diminished vision': 'Baisse de la vue', 'double vision': 'Vision double',
+    'palpitations': 'Palpitations', 'increased heart rate': 'Tachycardie',
+    'irregular heartbeat': 'Arythmie', 'decreased heart rate': 'Bradycardie',
+    'insomnia': 'Insomnie', 'sleepiness': 'Somnolence',
+    'anxiety and nervousness': 'Anxiété', 'depression': 'Dépression',
+    'seizures': 'Convulsions', 'fainting': 'Évanouissement',
+    'paresthesia': 'Fourmillements', 'disturbance of memory': 'Troubles de la mémoire',
+    'restlessness': 'Agitation', 'slurring words': 'Troubles de l\'élocution',
+    'peripheral edema': 'Œdème', 'fluid retention': 'Rétention d\'eau',
+    'leg swelling': 'Gonflement des jambes', 'ankle swelling': 'Cheville gonflée',
+    'shoulder pain': 'Douleur à l\'épaule', 'neck pain': 'Douleur au cou',
+    'knee pain': 'Douleur au genou', 'hip pain': 'Douleur à la hanche',
+    'leg pain': 'Douleur aux jambes', 'foot or toe pain': 'Douleur au pied',
+    'feeling ill': 'Malaise', 'flu-like syndrome': 'Syndrome grippal',
+    'flushing': 'Bouffées de chaleur', 'feeling cold': 'Sensation de froid',
+    'feeling hot': 'Sensation de chaleur', 'feeling hot and cold': 'Chaud et froid alternés',
+    'ache all over': 'Douleurs généralisées', 'pallor': 'Pâleur',
+    'coughing up sputum': 'Toux grasse', 'wheezing': 'Sifflement respiratoire',
+    'congestion in chest': 'Congestion thoracique', 'hemoptysis': 'Crachats de sang',
+    'allergic reaction': 'Réaction allergique', 'acne or pimples': 'Acné',
+    'skin lesion': 'Lésion cutanée', 'skin irritation': 'Irritation cutanée',
+    'toothache': 'Mal de dents', 'mouth ulcer': 'Aphte', 'mouth dryness': 'Bouche sèche',
+    'disturbance of smell or taste': 'Perte du goût / odorat',
+    'thirst': 'Soif', 'too little hair': 'Chute de cheveux',
+    'painful menstruation': 'Règles douloureuses', 'heavy menstrual flow': 'Règles abondantes',
+    'absence of menstruation': 'Absence de règles', 'vaginal discharge': 'Pertes vaginales',
+    'joint stiffness or tightness': 'Raideur articulaire',
+    'neck stiffness or tightness': 'Raideur du cou',
+    'frontal headache': 'Céphalée frontale',
+    'excessive urination at night': 'Nycturie', 'low urine output': 'Peu d\'urines',
+    'burning chest pain': 'Brûlure thoracique', 'pelvic pain': 'Douleur pelvienne',
+    'swollen abdomen': 'Ventre gonflé', 'melena': 'Selles noires',
+    'breathing fast': 'Respiration rapide', 'apnea': 'Apnée',
+    'hurts to breath': 'Douleur en respirant',
+}
+
+
+def _fetch_fr_to_en():
+    """Récupère le dictionnaire de traduction FR→EN depuis le service IA (mis en cache en module)."""
+    if not hasattr(_fetch_fr_to_en, '_cache'):
+        try:
+            r = requests.get(f"{settings.IA_SERVICE_URL}/symptoms/fr", timeout=3)
+            _fetch_fr_to_en._cache = r.json().get('fr_to_en_normalized', {})
+        except Exception:
+            _fetch_fr_to_en._cache = {}
+    return _fetch_fr_to_en._cache
+
+
+def _normalize_fr_local(text):
+    """Normalise le texte en minuscules sans accents (miroir de ia-service/app.py)."""
+    text = text.lower().strip()
+    for old, new in [('é','e'),('è','e'),('ê','e'),('ë','e'),('à','a'),('â','a'),
+                     ('ù','u'),('û','u'),('ü','u'),('î','i'),('ï','i'),
+                     ('ô','o'),('ö','o'),('ç','c'),('œ','oe'),('æ','ae')]:
+        text = text.replace(old, new)
+    return text
+
+
+def _extract_french_symptoms(message):
+    """Extrait les symptômes anglais depuis un message en français via le dictionnaire FR→EN."""
+    fr_to_en = _fetch_fr_to_en()
+    if not fr_to_en:
+        return []
+    normalized = _normalize_fr_local(message)
+    found = {}
+    for fr_term in sorted(fr_to_en, key=len, reverse=True):
+        if fr_term in normalized:
+            en_sym = fr_to_en[fr_term]
+            if en_sym not in found:
+                found[en_sym] = fr_term  # garder la clé française pour l'affichage
+    return list(found.keys())
+
+
 def handle_symptoms_ia(user, message, prefilled_symptoms=None):
-    """Analyse les symptômes via l'IA étendue (377 symptômes)."""
-    normalized = normalize(message)
+    """Analyse les symptômes via l'IA. Réservé au staff médical et aux patients."""
+    if user.role == 'administrateur':
+        return None
     ia_kw = ['symptome', 'symptomes', 'ia', 'intelligence artificielle', 'prediction',
-             'predire', 'analyse', 'analyser', 'maladie', 'diagnostic ia', 'diagnostic']
+             'predire', 'analyse', 'analyser', 'maladie', 'diagnostic ia', 'diagnostic',
+             'fievre', 'toux', 'fatigue', 'douleur', 'nausee', 'vomissement']
 
-    # 1. Recuperation de la liste des symptomes supportes par le service IA
-    try:
-        r_list = requests.get(f"{settings.IA_SERVICE_URL}/symptoms", timeout=3)
-        known_symptoms = r_list.json().get('symptoms', [])
-    except Exception:
-        known_symptoms = []
-
-    # 2. Extraction dynamique des symptomes presents dans le message
+    # 1. Symptômes déjà extraits par le service /brain (via LLM) → priorité absolue
     found_symptoms = prefilled_symptoms if prefilled_symptoms else []
-    if not found_symptoms and known_symptoms:
-        # On trie par longueur decroissante pour eviter les collisions (ex: "douleur" vs "douleur abdominale")
-        for sym in sorted(known_symptoms, key=len, reverse=True):
-            if sym.lower() in normalized:
-                found_symptoms.append(sym)
-                # Optionnel: on peut retirer le symptome du message pour eviter les doublons
-                # normalized = normalized.replace(sym.lower(), "")
 
-    # 3. Si des symptomes sont trouves, on lance la prediction
+    # 2. Sinon : matching local français → anglais (fonctionne sans Groq)
+    if not found_symptoms:
+        found_symptoms = _extract_french_symptoms(message)
+
+    # 3. Si des symptômes sont trouvés, on lance la prédiction
     if found_symptoms:
+        # Labels français lisibles pour l'affichage
+        symptomes_affich = [_EN_SYMPTOM_LABELS_FR.get(s, s.replace('_', ' ').capitalize()) for s in found_symptoms]
+
         try:
             r = requests.post(f"{settings.IA_SERVICE_URL}/predict", json={
                 'symptoms': found_symptoms,
             }, timeout=8)
             data = r.json()
             suggestions = data.get('suggestions', [])
-            
+
             if suggestions:
-                lines = [f"🧠 **Analyse IA des symptômes détectés :**\n_(Symptômes reconnus : {', '.join(found_symptoms)})_\n"]
-                for i, s in enumerate(suggestions[:5]): # Top 5
+                lines = [
+                    f"🧠 **Analyse IA des symptômes :**\n"
+                    f"_(Symptômes reconnus : {', '.join(symptomes_affich)})_\n"
+                ]
+                for i, s in enumerate(suggestions[:5]):
                     conf = s['confidence']
-                    # Gestion spéciale pour les cas indéterminés (score 0)
                     if conf == 0:
                         lines.append(f"⚠️ **{s['disease']}**")
                         lines.append(f"   _{s['explanation']}_")
                         continue
-
-                    # Confidence bar plus élégante
                     filled = int(conf / 10)
                     bar = '●' * filled + '○' * (10 - filled)
-                    
                     risk_colors = {'eleve': '🔴', 'modere': '🟠', 'faible': '🟢'}
                     icon = risk_colors.get(s['risk_level'], '⚪')
-                    
                     lines.append(f"{i+1}. {icon} **{s['disease']}** — **{conf}%**")
                     lines.append(f"   `{bar}`")
-                    if i == 0: # Explication détaillée
+                    if i == 0:
                         lines.append(f"   _{s['explanation']}_")
-                
+
                 lines.append(f"\n⚠️ _Outil d'aide au diagnostic clinique. Ne remplace pas l'expertise médicale._")
                 return '\n'.join(lines)
             else:
-                return f"Désolé, je reconnais les symptômes ({', '.join(found_symptoms)}), mais mon modèle IA actuel n'arrive pas à isoler une pathologie de façon probante. 🤔"
-        except Exception as e:
-            return "⚠️ Désolé, le service d'analyse prédictive est momentanément indisponible."
+                return (
+                    f"Je reconnais les symptômes ({', '.join(symptomes_affich)}), "
+                    f"mais le modèle IA n'arrive pas à isoler une pathologie précise. "
+                    f"Ajoutez d'autres symptômes pour affiner. 🤔"
+                )
+        except Exception:
+            return "⚠️ Le service d'analyse prédictive est momentanément indisponible."
 
-    # 4. Fallback : Si l'utilisateur pose une question mais sans symptomes clairs
+    # 4. Fallback : l'utilisateur pose une question générale sur l'IA
     if match_any(message, ia_kw):
         return (
             "🩺 **Assistant de Diagnostic IA**\n\n"
-            "Je peux analyser plus de **770 maladies** à partir de **370+ symptômes**.\n\n"
+            "Je peux analyser plus de **120 maladies** à partir de **380+ symptômes**.\n\n"
             "**Comment faire ?**\n"
-            "Décrivez simplement vos symptômes, par exemple :\n"
-            "_\"J'ai de la fièvre et des douleurs abdominales\"_ ou _\"Analyse toux et fatigue\"_.\n\n"
-            "💡 _Note : Plus vous donnez de symptômes précis, plus la prédiction sera fiable._"
+            "Décrivez simplement vos symptômes en français, par exemple :\n"
+            "_\"J'ai de la fièvre, une toux et de la fatigue\"_\n"
+            "_\"Analyse : maux de tête, vertiges et nausées\"_\n\n"
+            "💡 _Plus vous donnez de symptômes précis, plus la prédiction sera fiable._"
         )
 
     return None
@@ -593,27 +726,27 @@ def handle_symptoms_ia(user, message, prefilled_symptoms=None):
 
 def handle_analyze_appointment(user, partial_name, ai_response=None):
     """Analyse directement le motif médical du rendez-vous d'un patient via Llama 3."""
-    from apps.appointments.models import Appointment
+    from apps.appointments.models import RendezVous as Appointment
     from django.db.models import Q
     from django.conf import settings
     import requests
 
-    q = Q(patient__first_name__icontains=partial_name) | Q(patient__last_name__icontains=partial_name)
-    appts = Appointment.objects.filter(q, status__in=['planned', 'confirmed']).order_by('-scheduled_at')
-    
+    q = Q(patient__prenom__icontains=partial_name) | Q(patient__nom__icontains=partial_name)
+    appts = Appointment.objects.filter(q, statut__in=['PLANIFIE','CONFIRME','EN_COURS']).order_by('-date_heure')
+
     if not appts.exists():
-        appts = Appointment.objects.filter(q).order_by('-scheduled_at')
+        appts = Appointment.objects.filter(q).order_by('-date_heure')
 
     if not appts.exists():
         return f"Je n'ai pas trouvé de dossier ou de rendez-vous pour **{partial_name}**."
 
     appt = appts.first()
-    reason = appt.reason
+    reason = appt.motif
 
     if not reason or len(reason.strip()) < 5:
-        return f"Le dernier rendez-vous de **{appt.patient.full_name}** n'a pas de motif suffisamment détaillé."
+        return f"Le dernier rendez-vous de **{appt.patient.nom_complet}** n'a pas de motif suffisamment détaillé."
 
-    intro = f"J'ai examiné le motif du rendez-vous de **{appt.patient.full_name}** :\n_« {reason} »_\n\n"
+    intro = f"J'ai examiné le motif du rendez-vous de **{appt.patient.nom_complet}** :\n_« {reason} »_\n\n"
     
     try:
         # On demande au microservice d'extraire les symptômes via LLM et de prédire
@@ -648,27 +781,27 @@ def handle_analyze_appointment(user, partial_name, ai_response=None):
 
 
 def handle_stats(user, message):
-    """Statistiques du cabinet. Réservé au staff."""
-    if user.role == 'patient':
-        return "⚠️ Les statistiques globales du cabinet ne sont pas accessibles aux patients."
+    """Statistiques du cabinet. Réservé au staff médical."""
+    if user.role in ('patient', 'administrateur'):
+        return None
 
     stats_kw = ['statistique', 'statistiques', 'stats', 'chiffres', 'resume', 'bilan',
                 'tableau de bord', 'dashboard', 'activite', 'rapport', 'overview']
     if match_any(message, stats_kw):
         from apps.patients.models import Patient
-        from apps.appointments.models import Appointment
+        from apps.appointments.models import RendezVous as Appointment
         from apps.consultations.models import Consultation
         from apps.prescriptions.models import Prescription
 
-        patients_count = Patient.objects.filter(is_archived=False).count()
+        patients_count = Patient.objects.filter(est_archive=False).count()
         rdv_count = Appointment.objects.count()
-        rdv_today = Appointment.objects.filter(scheduled_at__date=timezone.now().date()).count()
+        rdv_today = Appointment.objects.filter(date_heure__date=timezone.now().date()).count()
         consultations_count = Consultation.objects.count()
-        ia_consultations = Consultation.objects.filter(ia_used=True).count()
+        ia_consultations = Consultation.objects.filter(ia_utilisee=True).count()
         prescriptions_count = Prescription.objects.count()
 
         return (
-            f"📊 **Statistiques du cabinet MedPredict :**\n\n"
+            f"📊 **Statistiques du cabinet CuraMedical :**\n\n"
             f"👥 **Patients actifs** : {patients_count}\n"
             f"📅 **Rendez-vous** : {rdv_count} au total ({rdv_today} aujourd'hui)\n"
             f"🩺 **Consultations** : {consultations_count} (dont {ia_consultations} avec IA)\n"
@@ -706,9 +839,10 @@ def handle_user_info(user, message):
                'mon nom', 'mes informations', 'mes infos', 'connecte comme']
     if match_any(message, user_kw):
         role_labels = {
-            'admin': 'Administrateur',
-            'doctor': 'Médecin',
-            'secretary': 'Secrétaire',
+            'administrateur': 'Administrateur',
+            'medecin': 'Médecin',
+            'secretaire': 'Secrétaire',
+            'patient': 'Patient',
         }
         role = role_labels.get(user.role, user.role) if hasattr(user, 'role') else '—'
         return (
@@ -727,19 +861,19 @@ def handle_user_info(user, message):
 
 # ── Patient creation steps ──
 PATIENT_STEPS = [
-    {'key': 'first_name',     'question': "👤 **Création d'un patient — Étape 1/7**\n\nQuel est le **prénom** du patient ?",       'required': True},
-    {'key': 'last_name',      'question': "👤 **Étape 2/7**\n\nQuel est le **nom de famille** du patient ?", 'required': True},
-    {'key': 'date_of_birth',  'question': "📅 **Étape 3/7**\n\nQuelle est la **date de naissance** ?\n\n_(Format : JJ/MM/AAAA, ex: 15/03/1990)_", 'required': True},
-    {'key': 'national_id',    'question': "🪪 **Étape 4/7**\n\nQuel est le **CIN** (numéro d'identité nationale) ?", 'required': True},
-    {'key': 'gender',         'question': "⚧ **Étape 5/7**\n\nQuel est le **genre** du patient ?\n\n_(Répondez **M** pour Masculin ou **F** pour Féminin)_", 'required': True},
-    {'key': 'phone',          'question': "📱 **Étape 6/7**\n\nQuel est le **numéro de téléphone** ?\n\n_(Tapez **-** pour passer)_", 'required': False},
+    {'key': 'prenom',         'question': "👤 **Création d'un patient — Étape 1/7**\n\nQuel est le **prénom** du patient ?",       'required': True},
+    {'key': 'nom',            'question': "👤 **Étape 2/7**\n\nQuel est le **nom de famille** du patient ?", 'required': True},
+    {'key': 'date_naissance', 'question': "📅 **Étape 3/7**\n\nQuelle est la **date de naissance** ?\n\n_(Format : JJ/MM/AAAA, ex: 15/03/1990)_", 'required': True},
+    {'key': 'cin',            'question': "🪪 **Étape 4/7**\n\nQuel est le **CIN** (numéro d'identité nationale) ?", 'required': True},
+    {'key': 'sexe',           'question': "⚧ **Étape 5/7**\n\nQuel est le **genre** du patient ?\n\n_(Répondez **M** pour Masculin ou **F** pour Féminin)_", 'required': True},
+    {'key': 'telephone',      'question': "📱 **Étape 6/7**\n\nQuel est le **numéro de téléphone** ?\n\n_(Tapez **-** pour passer)_", 'required': False},
     {'key': 'email',          'question': "📧 **Étape 7/7**\n\nQuelle est l'**adresse email** ?\n\n_(Tapez **-** pour passer)_", 'required': False},
 ]
 
 # ── Appointment creation steps ──
 APPOINTMENT_STEPS = [
     {'key': 'patient_name',   'question': "📅 **Création d'un RDV — Étape 1/4**\n\nPour quel **patient** ? _(Tapez le nom ou une partie du nom)_", 'required': True},
-    {'key': 'scheduled_at',   'question': "🕐 **Étape 2/4**\n\nÀ quelle **date et heure** ?\n\n_(Format : JJ/MM/AAAA HH:MM, ex: 20/03/2026 14:30)_", 'required': True},
+    {'key': 'date_heure',   'question': "🕐 **Étape 2/4**\n\nÀ quelle **date et heure** ?\n\n_(Format : JJ/MM/AAAA HH:MM, ex: 20/03/2026 14:30)_", 'required': True},
     {'key': 'duration',       'question': "⏱️ **Étape 3/4**\n\nQuelle **durée** en minutes ? _(ex: 30)_", 'required': True},
     {'key': 'reason',         'question': "📝 **Étape 4/4**\n\nQuel est le **motif** du rendez-vous ?", 'required': True},
 ]
@@ -774,13 +908,13 @@ def validate_patient_field(key, value):
     if value == '-':
         return '', None  # Skip optional field
 
-    if key == 'date_of_birth':
+    if key == 'date_naissance':
         d = parse_date(value)
         if not d:
             return None, "❌ Format de date invalide. Utilisez **JJ/MM/AAAA** (ex: 15/03/1990)."
         return d.isoformat(), None
 
-    if key == 'gender':
+    if key == 'sexe':
         v = value.upper().strip()
         if v in ('M', 'MASCULIN', 'HOMME', 'H'):
             return 'M', None
@@ -788,7 +922,7 @@ def validate_patient_field(key, value):
             return 'F', None
         return None, "❌ Répondez **M** (Masculin) ou **F** (Féminin)."
 
-    if key == 'national_id':
+    if key == 'cin':
         if len(value) < 3:
             return None, "❌ Le CIN semble trop court. Veuillez réessayer."
         return value, None
@@ -810,27 +944,27 @@ def validate_appointment_field(key, value):
         parts = value.split()
         q = Q()
         for part in parts:
-            q &= (Q(first_name__icontains=part) | Q(last_name__icontains=part))
-        patients = Patient.objects.filter(q, is_archived=False)[:5]
+            q &= (Q(prenom__icontains=part) | Q(nom__icontains=part))
+        patients = Patient.objects.filter(q, est_archive=False)[:5]
 
         if not patients.exists():
             # Recherche plus large
             q2 = Q()
             for part in parts:
-                q2 |= (Q(first_name__icontains=part) | Q(last_name__icontains=part))
-            patients = Patient.objects.filter(q2, is_archived=False)[:5]
+                q2 |= (Q(prenom__icontains=part) | Q(nom__icontains=part))
+            patients = Patient.objects.filter(q2, est_archive=False)[:5]
 
         if not patients.exists():
             return None, f"❌ Aucun patient trouvé pour **\"{value}\"**. Vérifiez le nom et réessayez."
 
         if patients.count() > 1:
-            names = '\n'.join([f"• **{p.first_name} {p.last_name}** (CIN: {p.national_id})" for p in patients])
+            names = '\n'.join([f"• **{p.prenom} {p.nom}** (CIN: {p.cin})" for p in patients])
             return None, f"🔍 Plusieurs patients trouvés :\n{names}\n\nPrécisez le nom complet."
 
         p = patients.first()
         return str(p.id), None
 
-    if key == 'scheduled_at':
+    if key == 'date_heure':
         dt = parse_datetime_str(value)
         if not dt:
             return None, "❌ Format invalide. Utilisez **JJ/MM/AAAA HH:MM** (ex: 20/03/2026 14:30)."
@@ -903,29 +1037,29 @@ def _finalize_patient(data):
     from apps.patients.models import Patient
     try:
         # Check duplicate CIN
-        if Patient.objects.filter(national_id=data['national_id']).exists():
+        if Patient.objects.filter(cin=data['cin']).exists():
             return {
-                'response': f"⚠️ Un patient avec le CIN **{data['national_id']}** existe déjà. Opération annulée.",
+                'response': f"⚠️ Un patient avec le CIN **{data['cin']}** existe déjà. Opération annulée.",
             }, None
 
         patient = Patient.objects.create(
-            first_name=data['first_name'],
-            last_name=data['last_name'],
-            date_of_birth=data['date_of_birth'],
-            national_id=data['national_id'],
-            gender=data['gender'],
-            phone=data.get('phone', ''),
+            prenom=data['prenom'],
+            nom=data['nom'],
+            date_naissance=data['date_naissance'],
+            cin=data['cin'],
+            sexe=data['sexe'],
+            telephone=data.get('telephone', ''),
             email=data.get('email', ''),
         )
-        gender_label = "Masculin" if patient.gender == 'M' else "Féminin"
+        gender_label = "Masculin" if patient.sexe == 'M' else "Féminin"
         return {
             'response': (
                 f"✅ **Patient créé avec succès !**\n\n"
-                f"• **Nom** : {patient.first_name} {patient.last_name}\n"
-                f"• **CIN** : {patient.national_id}\n"
-                f"• **Date de naissance** : {patient.date_of_birth}\n"
+                f"• **Nom** : {patient.prenom} {patient.nom}\n"
+                f"• **CIN** : {patient.cin}\n"
+                f"• **Date de naissance** : {patient.date_naissance}\n"
                 f"• **Genre** : {gender_label}\n"
-                f"• **Téléphone** : {patient.phone or '—'}\n"
+                f"• **Téléphone** : {patient.telephone or '—'}\n"
                 f"• **Email** : {patient.email or '—'}\n\n"
                 f"🎉 Le patient est maintenant visible dans la liste des patients !"
             ),
@@ -938,35 +1072,35 @@ def _finalize_patient(data):
 def _finalize_appointment(user, data):
     """Crée le RDV en base de données."""
     from apps.patients.models import Patient
-    from apps.appointments.models import Appointment
+    from apps.appointments.models import RendezVous as Appointment
     from apps.users.models import User
 
     try:
         patient = Patient.objects.get(id=int(data['patient_name']))
         # Find a doctor (first available)
-        doctor = User.objects.filter(role='doctor').first()
+        doctor = User.objects.filter(role='medecin').first()
         if not doctor:
             doctor = user  # Fallback to current user
 
-        dt = datetime.fromisoformat(data['scheduled_at'])
+        dt = datetime.fromisoformat(data['date_heure'])
         aware_dt = timezone.make_aware(dt) if timezone.is_naive(dt) else dt
 
         appointment = Appointment.objects.create(
             patient=patient,
-            doctor=doctor,
-            scheduled_at=aware_dt,
-            duration=int(data['duration']),
-            reason=data['reason'],
-            status='planned',
+            medecin=doctor,
+            date_heure=aware_dt,
+            duree=int(data['duration']),
+            motif=data['reason'],
+            statut='PLANIFIE',
         )
         return {
             'response': (
                 f"✅ **Rendez-vous créé avec succès !**\n\n"
-                f"• **Patient** : {patient.full_name}\n"
+                f"• **Patient** : {patient.nom_complet}\n"
                 f"• **Médecin** : Dr. {doctor.last_name or doctor.username}\n"
-                f"• **Date** : {appointment.scheduled_at.strftime('%d/%m/%Y à %Hh%M')}\n"
-                f"• **Durée** : {appointment.duration} minutes\n"
-                f"• **Motif** : {appointment.reason}\n"
+                f"• **Date** : {appointment.date_heure.strftime('%d/%m/%Y à %Hh%M')}\n"
+                f"• **Durée** : {appointment.duree} minutes\n"
+                f"• **Motif** : {appointment.motif}\n"
                 f"• **Statut** : 🟡 Planifié\n\n"
                 f"📅 Le rendez-vous est visible dans la liste des rendez-vous !"
             ),
@@ -1070,14 +1204,15 @@ def chat_view(request):
 
     # 2. ── Appel au cerveau IA (Brain Service) pour raisonner ──
     from apps.patients.models import Patient
-    from apps.appointments.models import Appointment
+    from apps.appointments.models import RendezVous as Appointment
     
     # Préparation du contexte pour rendre l'IA plus "intelligente"
+    brain_data = {}
     try:
-        patient_count = Patient.objects.filter(is_archived=False).count()
-        today_appts = Appointment.objects.filter(scheduled_at__date=timezone.now().date()).count()
+        patient_count = Patient.objects.filter(est_archive=False).count()
+        today_appts = Appointment.objects.filter(date_heure__date=timezone.now().date()).count()
         clinic_context = f"Le cabinet a actuellement {patient_count} patients actifs. Il y a {today_appts} rendez-vous prévus pour aujourd'hui."
-        
+
         r = requests.post(f"{settings.IA_SERVICE_URL}/brain", json={
             'message': message,
             'context': clinic_context
@@ -1094,6 +1229,22 @@ def chat_view(request):
     extracted_name = extract_patient_name(message)
 
     # 3. ── Gestion des flows de création (Spécial) ──
+    # Bloquer l'admin sur toutes les actions médicales
+    _MEDICAL_INTENTS = {
+        'create_patient', 'create_appointment', 'patient_search', 'patient_list',
+        'appointments_view', 'consultation_info', 'prescription_info', 'ia_symptoms',
+    }
+    if user.role == 'administrateur' and intent in _MEDICAL_INTENTS:
+        return Response({
+            'response': (
+                "🔒 **Accès restreint**\n\n"
+                "Les données médicales des patients sont confidentielles et réservées "
+                "exclusivement au **personnel médical** (médecins et secrétaires).\n\n"
+                "En tant qu'administrateur, vous pouvez gérer les **comptes utilisateurs** "
+                "et la **configuration système** depuis le panneau d'administration."
+            )
+        })
+
     if intent == 'create_patient' and not context:
         first_step = PATIENT_STEPS[0]
         intro = ai_response if ai_response else "🆕 **Intelligence Artificielle : Création de Patient**\n\nCommençons l'enregistrement."

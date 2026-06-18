@@ -14,10 +14,14 @@ def send_to_n8n_automation(data, binary_data=None, filename=None):
         "event": data.get("event"),
         "patient": data.get("patient_name"),
         "email": data.get("patient_email"),
+        "patient_tel": data.get("patient_tel"),
         "doctor": data.get("doctor_name"),
         "date": data.get("date"),
         "details": data.get("details"),
     }
+    for key, value in data.items():
+        if value is not None and key not in payload:
+            payload[key] = value
     
     # Si on a un fichier binaire (PDF), on l'encode en base64 pour le webhook
     if binary_data:

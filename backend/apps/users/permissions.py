@@ -1,31 +1,53 @@
-from rest_framework.permissions import BasePermission
+from rest_framework import permissions
 
-class IsDoctor(BasePermission):
-    """Autorise uniquement les médecins"""
-    def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role == 'doctor'
 
-class IsSecretary(BasePermission):
-    """Autorise uniquement les secrétaires"""
+class EstMedecin(permissions.BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role == 'secretary'
+        return request.user.is_authenticated and request.user.role == 'medecin'
 
-class IsAdmin(BasePermission):
-    """Autorise uniquement les administrateurs"""
-    def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role == 'admin'
 
-class IsDoctorOrAdmin(BasePermission):
-    """Autorise les médecins et les administrateurs"""
+class EstSecretaire(permissions.BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role in ['doctor', 'admin']
+        return request.user.is_authenticated and request.user.role == 'secretaire'
 
-class IsSecretaryOrAdmin(BasePermission):
-    """Autorise les secrétaires et les administrateurs"""
-    def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role in ['secretary', 'admin']
 
-class ReadOnly(BasePermission):
-    """Autorise uniquement les requêtes en lecture"""
+class EstAdministrateur(permissions.BasePermission):
     def has_permission(self, request, view):
-        return request.method in ['GET', 'HEAD', 'OPTIONS']
+        return (
+            request.user.is_authenticated and
+            (request.user.role == 'administrateur' or request.user.is_superuser)
+        )
+
+
+class EstPatient(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role == 'patient'
+
+
+class EstMedecinOuSecretaire(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated and
+            request.user.role in ['medecin', 'secretaire']
+        )
+
+
+class EstStaffOuAdministrateur(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated and
+            request.user.role in ['medecin', 'secretaire', 'administrateur']
+        )
+
+
+class EstProprietaire(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if hasattr(obj, 'user'):
+            return obj.user == request.user
+        if hasattr(obj, 'utilisateur'):
+            return obj.utilisateur == request.user
+        if hasattr(obj, 'patient') and hasattr(obj.patient, 'utilisateur'):
+            return obj.patient.utilisateur == request.user
+        if hasattr(obj, 'consultation') and hasattr(obj.consultation, 'patient'):
+            return obj.consultation.patient.utilisateur == request.user
+        return False

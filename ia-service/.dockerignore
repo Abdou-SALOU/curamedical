@@ -1,0 +1,27 @@
+# Évite d'envoyer les fichiers inutiles au daemon Docker → build plus rapide
+
+# Environnement virtuel (lourd, inutile dans Docker)
+venv/
+.venv/
+
+# Modèles déjà entraînés sur l'hôte (recréés pendant le build)
+model/
+
+# Cache Python
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Git
+.git/
+.gitignore
+
+# Docs et logs
+*.md
+*.log
+train.log
+
+# Données non utilisées par le service principal
+Final_Augmented_dataset_Diseases_and_Symptoms.csv
+data/

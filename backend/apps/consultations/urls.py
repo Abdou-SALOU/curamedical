@@ -1,14 +1,10 @@
-from django.urls import path
-from .views import (
-    ConsultationListCreateView,
-    ConsultationDetailView,
-    get_ia_suggestions,
-    download_consultation_report_pdf
-)
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import ConsultationViewSet
+
+router = DefaultRouter()
+router.register(r'', ConsultationViewSet, basename='consultation')
 
 urlpatterns = [
-    path('', ConsultationListCreateView.as_view(), name='consultation-list'),
-    path('<int:pk>/', ConsultationDetailView.as_view(), name='consultation-detail'),
-    path('<int:pk>/report/', download_consultation_report_pdf, name='consultation-report'),
-    path('ia/suggest/', get_ia_suggestions, name='ia-suggest'),
+    path('', include(router.urls)),
 ]

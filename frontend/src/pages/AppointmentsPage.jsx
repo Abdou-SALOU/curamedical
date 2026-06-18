@@ -1,26 +1,47 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
+import FullCalendar from '@fullcalendar/react'
+import dayGridPlugin from '@fullcalendar/daygrid'
+import timeGridPlugin from '@fullcalendar/timegrid'
+import interactionPlugin from '@fullcalendar/interaction'
 import api from '../api/axios'
 import { toast } from '../store/toastStore'
 import { SkeletonTable } from '../components/Skeleton'
 import ConfirmModal from '../components/ConfirmModal'
-import { Calendar, List, Plus, Trash2, Video } from 'lucide-react'
+import Pagination from '../components/Pagination'
+import { Calendar, CalendarDays, List, Plus, RotateCcw, Trash2, Video } from 'lucide-react'
+
+const PAGE_SIZE = 10
 
 const STATUS_COLORS = {
-  planned:     'badge-amber',
-  confirmed:   'badge-indigo',
-  in_progress: 'badge-violet',
-  completed:   'badge-emerald',
-  cancelled:   'badge-rose',
+  DEMANDE:  'badge-sky',
+  PLANIFIE: 'badge-amber',
+  CONFIRME: 'badge-indigo',
+  EN_COURS: 'badge-violet',
+  TERMINE:  'badge-emerald',
+  ANNULE:   'badge-rose',
 }
 const STATUS_LABELS = {
-  planned: 'Planifié', confirmed: 'Confirmé',
-  in_progress: 'En cours', completed: 'Terminé', cancelled: 'Annulé',
+  DEMANDE:  'En attente',
+  PLANIFIE: 'Planifié',
+  CONFIRME: 'Confirmé',
+  EN_COURS: 'En cours',
+  TERMINE:  'Terminé',
+  ANNULE:   'Annulé',
+}
+
+const STATUS_HEX_COLORS = {
+  DEMANDE:  '#64748b',
+  PLANIFIE: '#f59e0b',
+  CONFIRME: '#2563eb',
+  EN_COURS: '#8b5cf6',
+  TERMINE:  '#10b981',
+  ANNULE:   '#ef4444',
 }
 
 const EMPTY_FORM = {
-  patient: '', doctor: '', scheduled_at: '',
-  duration: 30, reason: '', status: 'planned', is_teleconsultation: false,
+  patient: '', medecin: '', date_heure: '',
+  duree: 30, motif: '', statut: 'PLANIFIE', type_consultation: 'PRESENTIEL',
 }
 
 const inputClass = "input-base"
@@ -39,7 +60,7 @@ function WeekView({ appointments }) {
   })
 
   const byDay = (day) => appointments.filter(a => {
-    const d = new Date(a.scheduled_at)
+    const d = new Date(a.date_heure)
     return d.toDateString() === day.toDateString()
   })
 
@@ -59,8 +80,8 @@ function WeekView({ appointments }) {
               </div>
               <div className="space-y-1">
                 {appts.map(a => (
-                  <div key={a.id} className={`rounded-lg px-2 py-1 text-[10px] font-semibold leading-tight ${STATUS_COLORS[a.status] ? 'badge ' + STATUS_COLORS[a.status] : 'bg-slate-100 text-slate-600'}`}>
-                    {new Date(a.scheduled_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} — {a.patient_detail?.full_name?.split(' ')[0] || '?'}
+                  <div key={a.id} className={`rounded-lg px-2 py-1 text-[10px] font-semibold leading-tight ${STATUS_COLORS[a.statut] ? 'badge ' + STATUS_COLORS[a.statut] : 'bg-slate-100 text-slate-600'}`}>
+                    {new Date(a.date_heure).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} — {a.patient_nom?.split(' ')[0] || '?'}
                   </div>
                 ))}
               </div>
@@ -72,33 +93,163 @@ function WeekView({ appointments }) {
   )
 }
 
+function CalendarView({ appointments }) {
+  const events = appointments
+    .filter(a => a.date_heure)
+    .map(a => {
+      const start = new Date(a.date_heure)
+      const duration = Number(a.duree || 30)
+      const end = new Date(start.getTime() + duration * 60000)
+      const patientName = a.patient_detail?.nom_complet || a.patient_nom || 'Patient'
+      const motif = a.motif || 'Consultation'
+
+      return {
+        id: String(a.id),
+        title: `${patientName} - ${motif}`,
+        start: start.toISOString(),
+        end: end.toISOString(),
+        backgroundColor: STATUS_HEX_COLORS[a.statut] || STATUS_HEX_COLORS.PLANIFIE,
+        borderColor: 'transparent',
+        extendedProps: a,
+      }
+    })
+
+  return (
+    <div className="p-4 md:p-5">
+      <style>{`
+        .curamedical-calendar .fc { font-family: Inter, system-ui, sans-serif; }
+        .curamedical-calendar .fc-toolbar-title { font-size: 1.05rem; font-weight: 900; color: #0f172a; }
+        .curamedical-calendar .fc-button-primary {
+          background: #059669 !important;
+          border: 0 !important;
+          border-radius: 10px !important;
+          box-shadow: none !important;
+          font-size: 12px !important;
+          font-weight: 800 !important;
+          text-transform: capitalize !important;
+        }
+        .curamedical-calendar .fc-button-primary:hover { background: #047857 !important; }
+        .curamedical-calendar .fc-button-active { background: #064e3b !important; }
+        .curamedical-calendar .fc-event {
+          border-radius: 9px;
+          padding: 2px 5px;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+        .curamedical-calendar .fc-col-header-cell {
+          padding: 10px 0;
+          background: #f8fafc;
+          color: #64748b;
+          font-size: 11px;
+          font-weight: 900;
+          text-transform: uppercase;
+        }
+        .curamedical-calendar .fc-theme-standard td,
+        .curamedical-calendar .fc-theme-standard th { border-color: #e2e8f0; }
+        .curamedical-calendar .fc-timegrid-slot { height: 42px !important; }
+      `}</style>
+      <div className="curamedical-calendar min-h-[650px]">
+        <FullCalendar
+          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+          initialView="timeGridWeek"
+          headerToolbar={{
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay',
+          }}
+          events={events}
+          height="650px"
+          slotMinTime="08:00:00"
+          slotMaxTime="20:00:00"
+          allDaySlot={false}
+          locale="fr"
+          firstDay={1}
+          nowIndicator
+          buttonText={{ today: "Aujourd'hui", month: 'Mois', week: 'Semaine', day: 'Jour' }}
+          eventClick={(info) => {
+            const r = info.event.extendedProps
+            toast.info(`${r.patient_detail?.nom_complet || r.patient_nom || 'Patient'} - ${STATUS_LABELS[r.statut] || r.statut}`)
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
 export default function AppointmentsPage() {
+  const location = useLocation()
+  const urlParams = new URLSearchParams(location.search)
+  const initType = urlParams.get('type') || ''
+
   const [appointments, setAppointments] = useState([])
+  const [count, setCount]         = useState(0)
+  const [page, setPage]           = useState(1)
   const [patients, setPatients]   = useState([])
   const [doctors, setDoctors]     = useState([])
-  const [view, setView]           = useState('list') // 'list' | 'week'
+  const [view, setView]           = useState('list') // 'list' | 'week' | 'calendar'
   const [showForm, setShowForm]   = useState(false)
   const [form, setForm]           = useState(EMPTY_FORM)
   const [filterDate, setFilterDate] = useState('')
+  const [filterType, setFilterType] = useState(initType)
   const [listLoading, setListLoading] = useState(true)
   const [saving, setSaving]       = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [showTrash, setShowTrash]         = useState(false)
+  const [trashItems, setTrashItems]       = useState([])
+  const [trashLoading, setTrashLoading]   = useState(false)
+
+  const fetchTrash = async () => {
+    setTrashLoading(true)
+    try {
+      const { data } = await api.get('/api/appointments/corbeille/')
+      setTrashItems(data.results || data)
+    } catch { toast.error('Impossible de charger la corbeille.') }
+    finally { setTrashLoading(false) }
+  }
+
+  const handleRestore = async (id) => {
+    try {
+      await api.post(`/api/appointments/${id}/restaurer/`)
+      setTrashItems(prev => prev.filter(a => a.id !== id))
+      await fetchAll()
+      toast.success('Rendez-vous restauré.')
+    } catch { toast.error('Impossible de restaurer le rendez-vous.') }
+  }
+
+  const handleDeleteForever = async (id) => {
+    try {
+      await api.delete(`/api/appointments/${id}/supprimer-definitif/`)
+      setTrashItems(prev => prev.filter(a => a.id !== id))
+      toast.success('Supprimé définitivement.')
+    } catch { toast.error('Impossible de supprimer définitivement.') }
+  }
 
   const fetchAll = useCallback(async () => {
-    try {
-      const params = filterDate ? `?date=${filterDate}` : ''
-      const [appts, pts, users] = await Promise.all([
-        api.get(`/api/appointments/${params}`),
-        api.get('/api/patients/'),
-        api.get('/api/users/doctors/'),
-      ])
-      setAppointments(appts.data.results || appts.data)
-      setPatients(pts.data.results || pts.data)
-      setDoctors((users.data.results || users.data).filter(u => u.role === 'doctor'))
-    } catch {
+    const dateParam = filterDate ? `&date=${filterDate}` : ''
+    // Vue liste : pagination serveur. Vues semaine/calendrier : période complète.
+    const apptQuery = view === 'list'
+      ? `?page_size=${PAGE_SIZE}&page=${page}${dateParam}`
+      : `?page_size=500${dateParam}`
+    const [appts, pts, users] = await Promise.allSettled([
+      api.get(`/api/appointments/${apptQuery}`),
+      api.get('/api/patients/?page_size=500'),
+      api.get('/api/users/medecins/'),
+    ])
+    if (appts.status === 'fulfilled') {
+      const results = appts.value.data.results || appts.value.data
+      setAppointments(results)
+      setCount(appts.value.data.count ?? results.length)
+    } else {
       toast.error('Impossible de charger les rendez-vous.')
     }
-  }, [filterDate])
+    if (pts.status === 'fulfilled') {
+      setPatients(pts.value.data.results || pts.value.data)
+    }
+    if (users.status === 'fulfilled') {
+      setDoctors((users.value.data.results || users.value.data).filter(u => u.role === 'medecin'))
+    }
+  }, [filterDate, view, page])
 
   useEffect(() => {
     fetchAll().finally(() => setListLoading(false))
@@ -121,43 +272,56 @@ export default function AppointmentsPage() {
     }
   }
 
-  const handleStatusChange = async (id, status) => {
+  const handleStatusChange = async (id, statut) => {
     try {
-      await api.patch(`/api/appointments/${id}/`, { status })
-      setAppointments(prev => prev.map(a => a.id === id ? { ...a, status } : a))
+      await api.patch(`/api/appointments/${id}/update-statut/`, { statut })
+      setAppointments(prev => prev.map(a => a.id === id ? { ...a, statut } : a))
     } catch {
       toast.error('Impossible de mettre à jour le statut.')
     }
   }
 
   const handleDelete = async (id) => {
-    await api.delete(`/api/appointments/${id}/`)
-    setAppointments(prev => prev.filter(a => a.id !== id))
-    toast.success('Rendez-vous supprimé.')
+    try {
+      await api.delete(`/api/appointments/${id}/`)
+      await fetchAll()
+      toast.success('Déplacé dans la corbeille.')
+    } catch {
+      toast.error('Impossible de supprimer ce rendez-vous.')
+    }
   }
 
   const setField = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
 
   return (
-    <div className="p-5 md:p-6 space-y-5 max-w-[1400px]">
+    <div className="cm-page">
 
       {/* Header */}
-      <section className="surface-panel rounded-3xl px-6 py-5">
+      <section className="cm-card cm-mb-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="label-xs text-emerald-700">Planning médical</p>
-            <h1 className="section-title mt-1.5 text-3xl font-black text-slate-900">Rendez-vous</h1>
-            <p className="mt-1 text-sm text-slate-500">{appointments.length} rendez-vous</p>
+            <div className="cm-eyebrow">Planning médical</div>
+            <div className="cm-title">Rendez-vous</div>
+            <div className="cm-sub">{count} rendez-vous</div>
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
+            {/* Type filter */}
+            <div className="flex rounded-xl bg-slate-100 p-1 gap-1">
+              {[['', 'Tous'], ['EN_LIGNE', '📹 Téléconsultations'], ['PRESENTIEL', '🏥 Cabinet']].map(([v, l]) => (
+                <button key={v} onClick={() => setFilterType(v)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${filterType === v ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
             {/* View toggle */}
             <div className="flex rounded-xl bg-slate-100 p-1 gap-1">
-              {[['list', List, 'Liste'], ['week', Calendar, 'Semaine']].map((item) => {
+              {[['list', List, 'Liste'], ['week', Calendar, 'Semaine'], ['calendar', CalendarDays, 'Calendrier']].map((item) => {
                 const [v, ViewIcon, label] = item
                 return (
                 <button
                   key={v}
-                  onClick={() => setView(v)}
+                  onClick={() => { setView(v); setPage(1) }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     view === v ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'
                   }`}
@@ -170,7 +334,7 @@ export default function AppointmentsPage() {
             <input
               type="date"
               value={filterDate}
-              onChange={e => setFilterDate(e.target.value)}
+              onChange={e => { setFilterDate(e.target.value); setPage(1) }}
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-400 transition-all"
             />
             {filterDate && (
@@ -182,7 +346,10 @@ export default function AppointmentsPage() {
                 ✕
               </button>
             )}
-            <button onClick={() => setShowForm(true)} className="btn-primary">
+            <button onClick={() => { setShowTrash(true); fetchTrash() }} className="cm-btn cm-btn-ghost" title="Corbeille">
+              <Trash2 size={15} /> Corbeille
+            </button>
+            <button onClick={() => setShowForm(true)} className="cm-btn cm-btn-brand">
               <Plus size={16} />
               Nouveau RDV
             </button>
@@ -191,11 +358,13 @@ export default function AppointmentsPage() {
       </section>
 
       {/* Content */}
-      <div className="surface-panel rounded-3xl overflow-hidden">
+      <div className="cm-card" style={{ padding: 0, overflow: 'hidden' }}>
         {listLoading ? (
           <SkeletonTable rows={5} cols={6} />
         ) : view === 'week' ? (
           <WeekView appointments={appointments} />
+        ) : view === 'calendar' ? (
+          <CalendarView appointments={appointments} />
         ) : (
           <div className="overflow-x-auto soft-scrollbar">
             <table className="w-full text-left">
@@ -207,39 +376,44 @@ export default function AppointmentsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {appointments.map(a => (
+                {appointments.filter(a => !filterType || a.type_consultation === filterType).map(a => (
                   <tr key={a.id} className="table-row-hover">
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-700 shrink-0">
-                          {a.patient_detail?.full_name?.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase() || '?'}
+                          {a.patient_nom?.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase() || '?'}
                         </div>
-                        <p className="text-sm font-semibold text-slate-900">{a.patient_detail?.full_name || '—'}</p>
+                        <p className="text-sm font-semibold text-slate-900">{a.patient_nom || '—'}</p>
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-sm text-slate-600">
-                      Dr. {a.doctor_detail?.last_name || '—'}
+                      {a.medecin_nom || '—'}
                     </td>
                     <td className="px-5 py-3.5 text-sm text-slate-700">
-                      {new Date(a.scheduled_at).toLocaleString('fr-FR', {
+                      {new Date(a.date_heure).toLocaleString('fr-FR', {
                         day:'2-digit', month:'2-digit', year:'numeric',
                         hour:'2-digit', minute:'2-digit',
                       })}
                     </td>
-                    <td className="px-5 py-3.5 text-sm text-slate-500">{a.duration} min</td>
+                    <td className="px-5 py-3.5 text-sm text-slate-500">{a.duree} min</td>
                     <td className="px-5 py-3.5">
-                      {a.is_teleconsultation ? (
-                        <div className="flex flex-col gap-1">
+                      {a.type_consultation === 'EN_LIGNE' ? (
+                        <div className="flex flex-col gap-2">
                           <span className="badge badge-sky inline-flex items-center gap-1">
-                            <Video size={11} />Vidéo
+                            <Video size={11} />Téléconsultation
                           </span>
-                          {a.teleconsultation_link?.includes('meet.jit.si/') && (
+                          {a.lien_visio && ['PLANIFIE','CONFIRME','EN_COURS'].includes(a.statut) && (
                             <Link
-                              to={`/video?room=${a.teleconsultation_link.split('meet.jit.si/')[1]}`}
-                              className="text-[10px] text-sky-500 hover:underline"
+                              to={`/teleconsultation/${a.id}`}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition-all hover:-translate-y-0.5"
+                              style={{ background: 'linear-gradient(180deg,var(--brand-400),var(--brand-600))', boxShadow: '0 4px 12px rgba(42,155,105,0.35)', textDecoration: 'none' }}
+                              onClick={e => e.stopPropagation()}
                             >
-                              Rejoindre →
+                              <Video size={11} /> Rejoindre
                             </Link>
+                          )}
+                          {a.statut === 'TERMINE' && (
+                            <span className="text-[10px] text-slate-400 font-semibold">Terminée</span>
                           )}
                         </div>
                       ) : (
@@ -248,9 +422,9 @@ export default function AppointmentsPage() {
                     </td>
                     <td className="px-5 py-3.5">
                       <select
-                        value={a.status}
+                        value={a.statut}
                         onChange={e => handleStatusChange(a.id, e.target.value)}
-                        className={`badge cursor-pointer focus:outline-none ${STATUS_COLORS[a.status] || 'badge-slate'}`}
+                        className={`badge cursor-pointer focus:outline-none ${STATUS_COLORS[a.statut] || 'badge-slate'}`}
                         onClick={e => e.stopPropagation()}
                       >
                         {Object.entries(STATUS_LABELS).map(([v, l]) => (
@@ -260,7 +434,7 @@ export default function AppointmentsPage() {
                     </td>
                     <td className="px-5 py-3.5">
                       <button
-                        onClick={() => setConfirmDelete({ id: a.id, label: new Date(a.scheduled_at).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) })}
+                        onClick={() => setConfirmDelete({ id: a.id, label: new Date(a.date_heure).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) })}
                         className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-rose-100 hover:text-rose-600 text-slate-400 flex items-center justify-center transition-colors"
                       >
                         <Trash2 size={14} />
@@ -281,6 +455,9 @@ export default function AppointmentsPage() {
               </tbody>
             </table>
           </div>
+        )}
+        {!listLoading && view === 'list' && (
+          <Pagination count={count} pageSize={PAGE_SIZE} currentPage={page} onPageChange={setPage} />
         )}
       </div>
 
@@ -307,12 +484,12 @@ export default function AppointmentsPage() {
                 <label className={labelClass}>Patient</label>
                 <select required value={form.patient} onChange={e => setField('patient', e.target.value)} className={inputClass}>
                   <option value="">Sélectionner un patient</option>
-                  {patients.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+                  {patients.map(p => <option key={p.id} value={p.id}>{p.nom_complet}</option>)}
                 </select>
               </div>
               <div>
                 <label className={labelClass}>Médecin</label>
-                <select required value={form.doctor} onChange={e => setField('doctor', e.target.value)} className={inputClass}>
+                <select required value={form.medecin} onChange={e => setField('medecin', e.target.value)} className={inputClass}>
                   <option value="">Sélectionner un médecin</option>
                   {doctors.map(d => <option key={d.id} value={d.id}>Dr. {d.last_name} {d.first_name}</option>)}
                 </select>
@@ -320,32 +497,54 @@ export default function AppointmentsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={labelClass}>Date et heure</label>
-                  <input type="datetime-local" required value={form.scheduled_at} onChange={e => setField('scheduled_at', e.target.value)} className={inputClass} />
+                  <input type="datetime-local" required value={form.date_heure} onChange={e => setField('date_heure', e.target.value)} className={inputClass} />
                 </div>
                 <div>
                   <label className={labelClass}>Durée (min)</label>
-                  <input type="number" min={15} max={120} value={form.duration} onChange={e => setField('duration', e.target.value)} className={inputClass} />
+                  <input type="number" min={15} max={120} value={form.duree} onChange={e => setField('duree', e.target.value)} className={inputClass} />
                 </div>
               </div>
               <div>
                 <label className={labelClass}>Motif de consultation</label>
-                <input type="text" required value={form.reason} onChange={e => setField('reason', e.target.value)} placeholder="Ex: Consultation de routine" className={inputClass} />
+                <input type="text" required value={form.motif} onChange={e => setField('motif', e.target.value)} placeholder="Ex: Consultation de routine" className={inputClass} />
               </div>
 
-              {/* Teleconsultation toggle */}
-              <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-4 cursor-pointer hover:bg-slate-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={form.is_teleconsultation}
-                  onChange={e => setField('is_teleconsultation', e.target.checked)}
-                  className="w-4 h-4 accent-emerald-500 rounded"
-                />
-                <div className="flex items-center gap-2">
-                  <Video size={16} className="text-sky-500" />
-                  <span className="text-sm font-semibold text-slate-700">Téléconsultation</span>
+              {/* Type de consultation */}
+              <div>
+                <label className={labelClass}>Type de consultation</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: 'PRESENTIEL', label: 'Au cabinet', icon: 'local_hospital' },
+                    { value: 'EN_LIGNE',   label: 'Téléconsultation', icon: 'videocam' },
+                  ].map(opt => (
+                    <label
+                      key={opt.value}
+                      className={`flex items-center gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
+                        form.type_consultation === opt.value
+                          ? 'border-emerald-400 bg-emerald-50'
+                          : 'border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="type_consultation"
+                        value={opt.value}
+                        checked={form.type_consultation === opt.value}
+                        onChange={e => setField('type_consultation', e.target.value)}
+                        className="w-4 h-4 accent-emerald-500"
+                      />
+                      <span className="material-symbols-outlined text-[18px] text-slate-500" style={{ fontVariationSettings: "'FILL' 1" }}>{opt.icon}</span>
+                      <span className="text-sm font-semibold text-slate-700">{opt.label}</span>
+                    </label>
+                  ))}
                 </div>
-                <span className="ml-auto text-xs text-slate-400">Lien généré automatiquement</span>
-              </label>
+                {form.type_consultation === 'EN_LIGNE' && (
+                  <p className="mt-1.5 text-[11px] text-sky-600 font-semibold flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[13px]">check_circle</span>
+                    Un lien Jitsi sera généré automatiquement
+                  </p>
+                )}
+              </div>
 
               <div className="flex gap-3 pt-1">
                 <button type="button" onClick={() => setShowForm(false)} className="btn-ghost flex-1">Annuler</button>
@@ -361,14 +560,64 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {/* ── Confirm delete ── */}
+      {/* ── Confirm delete (corbeille) ── */}
       {confirmDelete && (
         <ConfirmModal
-          title="Supprimer le rendez-vous ?"
-          message={`Le rendez-vous du ${confirmDelete.label} sera définitivement supprimé.`}
+          title="Mettre à la corbeille ?"
+          message={`Le rendez-vous du ${confirmDelete.label} sera déplacé dans la corbeille.`}
           onConfirm={() => handleDelete(confirmDelete.id)}
           onClose={() => setConfirmDelete(null)}
         />
+      )}
+
+      {/* ── Corbeille modal ── */}
+      {showTrash && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setShowTrash(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-rose-50 flex items-center justify-center text-rose-500"><Trash2 size={16} /></div>
+                <div>
+                  <div className="font-700 text-slate-800 text-sm font-bold">Corbeille — Rendez-vous</div>
+                  <div className="text-xs text-slate-400">{trashItems.length} élément{trashItems.length !== 1 ? 's' : ''}</div>
+                </div>
+              </div>
+              <button onClick={() => setShowTrash(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">✕</button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-6 py-4">
+              {trashLoading ? (
+                <div className="text-center text-slate-400 py-10 text-sm">Chargement…</div>
+              ) : trashItems.length === 0 ? (
+                <div className="text-center py-14">
+                  <div className="text-4xl mb-3">🗑️</div>
+                  <div className="text-slate-500 font-semibold">La corbeille est vide</div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {trashItems.map(a => (
+                    <div key={a.id} className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200 gap-4">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-800 text-sm truncate">{a.patient_nom || a.patient_detail?.nom_complet}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          {a.date_heure && new Date(a.date_heure).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+                          {a.medecin_nom && ` — ${a.medecin_nom}`}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={() => handleRestore(a.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold transition-colors">
+                          <RotateCcw size={13} /> Restaurer
+                        </button>
+                        <button onClick={() => handleDeleteForever(a.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold transition-colors">
+                          <Trash2 size={13} /> Supprimer
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

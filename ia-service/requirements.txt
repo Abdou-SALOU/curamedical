@@ -3,6 +3,5 @@ scikit-learn
 numpy
 pandas
 joblib
-google-generativeai
 groq
 python-dotenv

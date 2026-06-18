@@ -1,12 +1,10 @@
-from django.urls import path
-from .views import (
-    PrescriptionListCreateView,
-    PrescriptionDetailView,
-    download_prescription_pdf
-)
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import PrescriptionViewSet
+
+router = DefaultRouter()
+router.register(r'', PrescriptionViewSet, basename='prescription')
 
 urlpatterns = [
-    path('', PrescriptionListCreateView.as_view(), name='prescription-list'),
-    path('<int:pk>/', PrescriptionDetailView.as_view(), name='prescription-detail'),
-    path('<int:pk>/pdf/', download_prescription_pdf, name='prescription-pdf'),
+    path('', include(router.urls)),
 ]
