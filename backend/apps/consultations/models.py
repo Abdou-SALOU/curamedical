@@ -1,40 +1,61 @@
 from django.db import models
-from apps.appointments.models import Appointment
-from apps.users.models import User
+from django.conf import settings
+from apps.patients.models import Patient
+from apps.appointments.models import RendezVous
+
 
 class Consultation(models.Model):
-    appointment = models.OneToOneField(
-        Appointment, on_delete=models.CASCADE,
+
+    # Lien avec le rendez-vous
+    rendez_vous = models.OneToOneField(
+        RendezVous,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
         related_name='consultation'
     )
-    doctor = models.ForeignKey(
-        User, on_delete=models.CASCADE,
+    patient = models.ForeignKey(
+        Patient,
+        on_delete=models.CASCADE,
         related_name='consultations'
     )
-
-    # Données cliniques
-    symptoms = models.JSONField(default=list, verbose_name='Symptômes')
-    clinical_exam = models.TextField(blank=True, verbose_name='Examen clinique')
-    diagnosis = models.CharField(max_length=255, verbose_name='Diagnostic retenu')
-    notes = models.TextField(blank=True, verbose_name='Notes')
-
-    # Suggestions IA (stockées à titre informatif)
-    ia_suggestions = models.JSONField(
-        null=True, blank=True,
-        verbose_name='Suggestions IA'
+    medecin = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='consultations',
+        limit_choices_to={'role': 'medecin'}
     )
-    ia_used = models.BooleanField(default=False, verbose_name='IA consultée')
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # Contenu médical
+    symptomes = models.JSONField("Symptômes observés", default=list, blank=True)
+    examen_clinique = models.TextField("Résultats examen clinique", blank=True, null=True)
+    diagnostic = models.TextField("Diagnostic retenu", blank=True, null=True)
+    notes = models.TextField("Notes du médecin", blank=True, null=True)
+
+    # Module IA — stocké en JSON
+    suggestions_ia = models.JSONField(
+        "Suggestions IA",
+        blank=True,
+        null=True,
+        help_text="Top 3 pathologies suggérées par l'IA avec scores de confiance"
+    )
+    ia_utilisee = models.BooleanField("Module IA utilisé", default=False)
+
+    # Métadonnées
+    date_consultation = models.DateTimeField(auto_now_add=True)
+    modifie_le = models.DateTimeField(auto_now=True)
+    est_supprime = models.BooleanField("Supprimé", default=False)
+    supprime_le = models.DateTimeField("Date de suppression", null=True, blank=True)
 
     class Meta:
-        verbose_name = 'Consultation'
-        ordering = ['-created_at']
+        verbose_name = "Consultation"
+        verbose_name_plural = "Consultations"
+        ordering = ['-date_consultation']
 
     def __str__(self):
-        return f"Consultation {self.appointment.patient} — {self.created_at:%d/%m/%Y}"
-
-    @property
-    def patient(self):
-        return self.appointment.patient
+        return (
+            f"Consultation {self.patient.nom_complet} "
+            f"— Dr. {self.medecin.last_name} "
+            f"le {self.date_consultation.strftime('%d/%m/%Y')}"
+        )
+from auditlog.registry import auditlog
+auditlog.register(Consultation)

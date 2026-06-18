@@ -2,10 +2,14 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
+# ── Dépendances Node ───────────────────────────────────────────
+# package*.json copiés EN PREMIER → layer cachée tant que package.json
+# ou package-lock.json ne changent pas → npm install ne tourne qu'une fois
+COPY package.json package-lock.json ./
 RUN npm install
 
+# ── Code source (change souvent, mais npm install est déjà caché) ──
 COPY . .
 
 EXPOSE 3000
-CMD ["npm", "run", "dev", "--", "--host"]
+CMD ["npm", "run", "dev"]

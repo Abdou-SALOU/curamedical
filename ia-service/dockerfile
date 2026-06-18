@@ -2,13 +2,27 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# ── Dépendances système ────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# ── Dépendances Python ─────────────────────────────────────────
+# Copiées EN PREMIER → layer cachée tant que requirements.txt ne change pas
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# ── Dataset + scripts d'entraînement ──────────────────────────
+# Copiés séparément → la layer d'entraînement est cachée
+# tant que ces fichiers ne changent pas
+COPY Fast_Dataset.csv train.py intent_classifier.py intents_data.py ./
+
+# ── Entraînement du modèle pendant le BUILD (plus jamais au démarrage) ──
+# Layer cachée : si Fast_Dataset.csv et train.py n'ont pas changé,
+# Docker réutilise la layer existante → 0 seconde d'attente
+RUN python train.py
+
+# ── Code source (change souvent, mais les layers coûteuses sont déjà cachées) ──
 COPY . .
 
 EXPOSE 5000

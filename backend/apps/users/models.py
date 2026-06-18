@@ -1,43 +1,75 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
-class User(AbstractUser):
-    """Modèle utilisateur personnalisé avec rôles"""
 
+class User(AbstractUser):
     ROLE_CHOICES = [
-        ('admin', 'Administrateur'),
-        ('doctor', 'Médecin'),
-        ('secretary', 'Secrétaire'),
+        ('administrateur', 'Administrateur'),
+        ('medecin', 'Médecin'),
+        ('secretaire', 'Secrétaire'),
         ('patient', 'Patient'),
     ]
 
     role = models.CharField(
         max_length=20,
         choices=ROLE_CHOICES,
-        default='secretary'
+        default='patient',
+        verbose_name="Rôle"
     )
-    phone = models.CharField(max_length=20, blank=True)
-    is_active = models.BooleanField(default=True)
+    telephone = models.CharField(
+        max_length=15,
+        blank=True,
+        null=True,
+        verbose_name="Téléphone"
+    )
+
+    SPECIALITE_CHOICES = [
+        ('generaliste', 'Médecin Généraliste'),
+        ('cardiologue', 'Cardiologue'),
+        ('dermatologue', 'Dermatologue'),
+        ('gynecologue', 'Gynécologue'),
+        ('pediatre', 'Pédiatre'),
+        ('ophtalmologue', 'Ophtalmologue'),
+        ('dentiste', 'Dentiste'),
+        ('radiologue', 'Radiologue'),
+        ('chirurgien', 'Chirurgien'),
+        ('neurologue', 'Neurologue'),
+        ('pneumologue', 'Pneumologue'),
+        ('rhumatologue', 'Rhumatologue'),
+        ('endocrinologue', 'Endocrinologue'),
+        ('gastro', 'Gastro-entérologue'),
+        ('psy', 'Psychiatre / Psychologue'),
+        ('urgentiste', 'Médecin Urgentiste'),
+        ('autre', 'Autre spécialité'),
+    ]
+
+    specialite = models.CharField(
+        max_length=30,
+        choices=SPECIALITE_CHOICES,
+        blank=True,
+        null=True,
+        verbose_name="Spécialité"
+    )
 
     class Meta:
         verbose_name = 'Utilisateur'
         verbose_name_plural = 'Utilisateurs'
 
     def __str__(self):
-        return f"{self.get_full_name()} ({self.get_role_display()})"
+        return f"{self.get_full_name() or self.username} ({self.get_role_display()})"
 
     @property
-    def is_doctor(self):
-        return self.role == 'doctor'
+    def est_medecin(self):
+        return self.role == 'medecin'
 
     @property
-    def is_secretary(self):
-        return self.role == 'secretary'
+    def est_secretaire(self):
+        return self.role == 'secretaire'
 
     @property
-    def is_admin(self):
-        return self.role == 'admin'
+    def est_administrateur(self):
+        return self.role == 'administrateur' or self.is_superuser
 
     @property
-    def is_patient(self):
+    def est_patient(self):
         return self.role == 'patient'

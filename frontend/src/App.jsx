@@ -1,18 +1,26 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, lazy, Suspense } from 'react'
 import useAuthStore from './store/authStore'
+import useThemeStore from './store/themeStore'
 import PrivateRoute from './components/PrivateRoute'
 import Layout from './components/Layout'
 import ToastContainer from './components/ToastContainer'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
-import PatientsPage from './pages/PatientsPage'
-import AppointmentsPage from './pages/AppointmentsPage'
-import ConsultationsPage from './pages/ConsultationsPage'
-import PrescriptionsPage from './pages/PrescriptionsPage'
-import AdminPage from './pages/AdminPage'
-import VideoPage from './pages/VideoPage'
-import UnauthorizedPage from './pages/UnauthorizedPage'
+
+// Pages chargées à la demande — allège le bundle initial
+// (FullCalendar et Jitsi SDK ne sont téléchargés que si la page est visitée)
+const PatientsPage = lazy(() => import('./pages/PatientsPage'))
+const AppointmentsPage = lazy(() => import('./pages/AppointmentsPage'))
+const ConsultationsPage = lazy(() => import('./pages/ConsultationsPage'))
+const PrescriptionsPage = lazy(() => import('./pages/PrescriptionsPage'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
+const VideoPage = lazy(() => import('./pages/VideoPage'))
+const TeleconsultationRoomPage = lazy(() => import('./pages/TeleconsultationRoomPage'))
+const RegisterPage = lazy(() => import('./pages/RegisterPage'))
+const PatientProfilePage = lazy(() => import('./pages/PatientProfilePage'))
+const TrashPage = lazy(() => import('./pages/TrashPage'))
+const UnauthorizedPage = lazy(() => import('./pages/UnauthorizedPage'))
 
 function AppLoader() {
   return (
@@ -22,10 +30,10 @@ function AppLoader() {
           <div className="absolute inset-0 rounded-full border-4 border-emerald-500/20" />
           <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 animate-spin" />
           <div className="absolute inset-[6px] rounded-full bg-emerald-50 flex items-center justify-center">
-            <span className="text-emerald-600 text-xl font-black" style={{ fontFamily: 'Manrope' }}>M</span>
+            <span className="text-emerald-600 text-xl font-black" style={{ fontFamily: 'Manrope' }}>C</span>
           </div>
         </div>
-        <p className="text-sm font-semibold text-slate-500 animate-pulse">Chargement de MedPredict…</p>
+        <p className="text-sm font-semibold text-slate-500 animate-pulse">Chargement de CuraMedical…</p>
       </div>
     </div>
   )
@@ -33,17 +41,19 @@ function AppLoader() {
 
 export default function App() {
   const { fetchMe, isAuthenticated, isLoading } = useAuthStore()
+  const { init } = useThemeStore()
 
   useEffect(() => {
+    init()
     if (isAuthenticated) fetchMe()
-  }, [isAuthenticated, fetchMe])
+  }, [isAuthenticated, fetchMe, init])
 
-  // Block all routes until we know who the user is
   if (isLoading) return <AppLoader />
 
   return (
     <>
       <BrowserRouter>
+        <Suspense fallback={<AppLoader />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/unauthorized" element={<UnauthorizedPage />} />
@@ -68,10 +78,20 @@ export default function App() {
           <Route path="/video" element={
             <PrivateRoute path="/video"><Layout><VideoPage /></Layout></PrivateRoute>
           } />
+          <Route path="/teleconsultation/:id" element={
+            <PrivateRoute path="/teleconsultation/"><TeleconsultationRoomPage /></PrivateRoute>
+          } />
+          <Route path="/profile" element={
+            <PrivateRoute path="/profile"><Layout><PatientProfilePage /></Layout></PrivateRoute>
+          } />
+          <Route path="/patients/trash" element={
+            <PrivateRoute path="/patients"><Layout><TrashPage /></Layout></PrivateRoute>
+          } />
+          <Route path="/register" element={<RegisterPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </BrowserRouter>
-      {/* Global toast layer – outside BrowserRouter so it always renders */}
       <ToastContainer />
     </>
   )

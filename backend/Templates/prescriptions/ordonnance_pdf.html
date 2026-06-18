@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            color: #333;
+            margin: 40px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .cabinet-info {
+            font-size: 12px;
+        }
+
+        .cabinet-info h2 {
+            font-size: 16px;
+            margin: 0 0 4px;
+        }
+
+        .patient-info {
+            background: #f9f9f9;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-left: 3px solid #333;
+        }
+
+        .titre-ordonnance {
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+
+        th {
+            background: #333;
+            color: white;
+            padding: 8px;
+            text-align: left;
+            font-size: 12px;
+        }
+
+        td {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+            font-size: 12px;
+            vertical-align: top;
+        }
+
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+
+        .notes {
+            background: #f0f0f0;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+
+        .footer {
+            margin-top: 60px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .signature {
+            text-align: center;
+        }
+
+        .signature p {
+            border-top: 1px solid #333;
+            padding-top: 5px;
+            margin-top: 40px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <div class="cabinet-info">
+            <h2>Cabinet CuraMedical</h2>
+            <p>Dr. {{ prescription.medecin.get_full_name }}</p>
+            <p>Tél : {{ prescription.medecin.telephone }}</p>
+        </div>
+        <div style="text-align:right; font-size:12px;">
+            <p>Date : {{ prescription.cree_le|date:"d/m/Y" }}</p>
+            <p>Ordonnance N° : {{ prescription.id }}</p>
+        </div>
+    </div>
+
+    <div class="titre-ordonnance">Ordonnance Médicale</div>
+
+    <div class="patient-info">
+        <strong>Patient :</strong> {{ prescription.patient.nom_complet }} &nbsp;|&nbsp;
+        <strong>Âge :</strong> {{ prescription.patient.age }} ans &nbsp;|&nbsp;
+        <strong>Groupe sanguin :</strong> {{ prescription.patient.groupe_sanguin|default:"NC" }}
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Médicament</th>
+                <th>Dosage</th>
+                <th>Fréquence</th>
+                <th>Durée</th>
+                <th>Instructions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in prescription.lignes.all %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td><strong>{{ ligne.medicament }}</strong></td>
+                <td>{{ ligne.dosage }} ({{ ligne.get_unite_display }})</td>
+                <td>{{ ligne.frequence }}</td>
+                <td>{{ ligne.duree }}</td>
+                <td>{{ ligne.instructions|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if prescription.notes_generales %}
+    <div class="notes">
+        <strong>Notes :</strong> {{ prescription.notes_generales }}
+    </div>
+    {% endif %}
+
+    <div class="footer">
+        <div style="font-size:11px; color:#888;">
+            Ce document est confidentiel.<br>
+            Valable 3 mois à compter de la date d'émission.
+        </div>
+        <div class="signature">
+            <p>Dr. {{ prescription.medecin.get_full_name }}</p>
+        </div>
+    </div>
+
+</body>
+
+</html>

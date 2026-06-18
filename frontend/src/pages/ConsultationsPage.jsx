@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import api from '../api/axios'
 import { toast } from '../store/toastStore'
 import ConfirmModal from '../components/ConfirmModal'
+import Pagination from '../components/Pagination'
 import { SkeletonTable } from '../components/Skeleton'
-import { FilePlus, Brain, AlertTriangle, Activity, Sparkles, Trash2 } from 'lucide-react'
+import { FilePlus, Brain, AlertTriangle, Activity, Sparkles, Trash2, RotateCcw } from 'lucide-react'
+
+const PAGE_SIZE = 10
 
 const SYMPTOMS = [
   { value: 'fever',                    label: 'Fièvre',                   hint: 'Température élevée ou frissons.' },
@@ -44,8 +47,8 @@ const SYMPTOMS = [
 ]
 
 const EMPTY_FORM = {
-  appointment: '', symptoms: [], clinical_exam: '',
-  diagnosis: '', notes: '', ia_suggestions: null, ia_used: false,
+  rendez_vous: '', patient: '', symptomes: [], examen_clinique: '',
+  diagnostic: '', notes: '', suggestions_ia: null, ia_utilisee: false,
 }
 
 const EMPTY_IA_PARAMS = { age: 30, gender: 'M', blood_pressure: 'Normal', cholesterol: 'Normal' }
@@ -54,9 +57,18 @@ const inputClass =
   'w-full rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-emerald-300 focus:outline-none focus:ring-4 focus:ring-emerald-100'
 const labelClass = 'mb-2 block text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500'
 
+const fmtDate = (iso) => {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return isNaN(d) ? '—' : d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
 export default function ConsultationsPage() {
   const [consultations, setConsultations] = useState([])
+  const [count, setCount] = useState(0)
+  const [page, setPage] = useState(1)
   const [appointments, setAppointments] = useState([])
+  const [patients, setPatients] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [iaParams, setIaParams] = useState(EMPTY_IA_PARAMS)
@@ -68,43 +80,87 @@ export default function ConsultationsPage() {
   const [error, setError] = useState('')
   const [selected, setSelected] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [showTrash, setShowTrash]         = useState(false)
+  const [trashItems, setTrashItems]       = useState([])
+  const [trashLoading, setTrashLoading]   = useState(false)
+
+  const fetchTrash = async () => {
+    setTrashLoading(true)
+    try {
+      const { data } = await api.get('/api/consultations/corbeille/')
+      setTrashItems(data.results || data)
+    } catch { toast.error('Impossible de charger la corbeille.') }
+    finally { setTrashLoading(false) }
+  }
+
+  const handleRestore = async (id) => {
+    try {
+      await api.post(`/api/consultations/${id}/restaurer/`)
+      setTrashItems(prev => prev.filter(c => c.id !== id))
+      await fetchAll()
+      toast.success('Consultation restaurée.')
+    } catch { toast.error('Impossible de restaurer la consultation.') }
+  }
+
+  const handleDeleteForever = async (id) => {
+    try {
+      await api.delete(`/api/consultations/${id}/supprimer-definitif/`)
+      setTrashItems(prev => prev.filter(c => c.id !== id))
+      toast.success('Supprimée définitivement.')
+    } catch { toast.error('Impossible de supprimer définitivement.') }
+  }
 
   const fetchAll = useCallback(async () => {
-    try {
-      const [consults, appts] = await Promise.all([api.get('/api/consultations/'), api.get('/api/appointments/')])
-      setConsultations(consults.data.results || consults.data)
-      setAppointments(appts.data.results || appts.data)
-    } catch {
+    const [consults, appts, pats] = await Promise.allSettled([
+      api.get(`/api/consultations/?page_size=${PAGE_SIZE}&page=${page}`),
+      api.get('/api/appointments/?page_size=500'),
+      api.get('/api/patients/?page_size=500'),
+    ])
+    if (consults.status === 'fulfilled') {
+      const results = consults.value.data.results || consults.value.data
+      setConsultations(results)
+      setCount(consults.value.data.count ?? results.length)
+    } else {
       toast.error('Impossible de charger les consultations.')
     }
-  }, [])
+    if (appts.status === 'fulfilled') setAppointments(appts.value.data.results || appts.value.data)
+    if (pats.status === 'fulfilled')  setPatients(pats.value.data.results || pats.value.data)
+  }, [page])
 
   useEffect(() => { fetchAll().finally(() => setListLoading(false)) }, [fetchAll])
 
   const availableAppointments = useMemo(() => {
-    const usedIds = new Set(consultations.map(c => c.appointment))
+    const usedIds = new Set(consultations.map(c => c.rendez_vous))
     return appointments.filter(a => !usedIds.has(a.id))
   }, [appointments, consultations])
 
   const applyAppointmentDefaults = (appointmentId) => {
-    setForm(prev => ({ ...prev, appointment: appointmentId }))
     const appt = appointments.find(a => String(a.id) === String(appointmentId))
+    setForm(prev => ({
+      ...prev,
+      rendez_vous: appointmentId,
+      patient: appt ? String(appt.patient) : prev.patient,
+    }))
     if (!appt?.patient_detail) return
-    setIaParams(prev => ({ ...prev, age: appt.patient_detail.age || prev.age, gender: appt.patient_detail.gender || prev.gender }))
+    setIaParams(prev => ({
+      ...prev,
+      age: appt.patient_detail.age || prev.age,
+      gender: appt.patient_detail.sexe || prev.gender,
+    }))
   }
 
   const toggleSymptom = (symptom) => {
     setIaSuggestions(null)
     setForm(prev => ({
       ...prev,
-      symptoms: prev.symptoms.includes(symptom)
-        ? prev.symptoms.filter(s => s !== symptom)
-        : [...prev.symptoms, symptom],
+      symptomes: prev.symptomes.includes(symptom)
+        ? prev.symptomes.filter(s => s !== symptom)
+        : [...prev.symptomes, symptom],
     }))
   }
 
   const handleAskIA = async () => {
-    if (form.symptoms.length === 0) {
+    if (form.symptomes.length === 0) {
       setIaError('Sélectionnez au moins un symptôme avant de lancer l\'analyse.')
       return
     }
@@ -112,24 +168,22 @@ export default function ConsultationsPage() {
     setIaError('')
     setIaSuggestions(null)
     try {
-      const { data } = await api.post('/api/consultations/ia/suggest/', {
-        symptoms: form.symptoms,
+      const { data } = await api.post('/api/consultations/suggestions-ia/', {
+        symptomes: form.symptomes,
         age: iaParams.age,
         gender: iaParams.gender,
         blood_pressure: iaParams.blood_pressure,
         cholesterol: iaParams.cholesterol,
       })
 
-      // Le service peut retourner un tableau vide si aucune maladie n'est détectée
       const suggestions = data.suggestions || []
       setIaSuggestions(suggestions)
-      // Auto-remplissage du diagnostic avec la suggestion la plus probable
       const topDiagnosis = suggestions.length > 0 ? suggestions[0].disease : ''
       setForm(prev => ({
         ...prev,
-        ia_suggestions: suggestions,
-        ia_used: suggestions.length > 0,
-        diagnosis: topDiagnosis || prev.diagnosis,
+        suggestions_ia: suggestions,
+        ia_utilisee: suggestions.length > 0,
+        diagnostic: topDiagnosis || prev.diagnostic,
       }))
 
       if (suggestions.length === 0) {
@@ -162,14 +216,16 @@ export default function ConsultationsPage() {
     setLoading(true)
     setError('')
     try {
+      const patientId = parseInt(form.patient, 10)
       await api.post('/api/consultations/', {
-        appointment: parseInt(form.appointment, 10),
-        symptoms: form.symptoms,
-        clinical_exam: form.clinical_exam,
-        diagnosis: form.diagnosis,
+        rendez_vous: form.rendez_vous ? parseInt(form.rendez_vous, 10) : null,
+        ...(patientId > 0 ? { patient: patientId } : {}),
+        symptomes: form.symptomes,
+        examen_clinique: form.examen_clinique,
+        diagnostic: form.diagnostic,
         notes: form.notes,
-        ia_suggestions: form.ia_suggestions,
-        ia_used: form.ia_used,
+        suggestions_ia: form.suggestions_ia,
+        ia_utilisee: form.ia_utilisee,
       })
       closeForm()
       fetchAll()
@@ -187,49 +243,79 @@ export default function ConsultationsPage() {
     }
   }
 
-  const handleDelete = async (id) => {
-    await api.delete(`/api/consultations/${id}/`)
-    fetchAll()
-    if (selected?.id === id) setSelected(null)
-    toast.success('Consultation supprimée.')
+  const handleSelectConsultation = async (c) => {
+    setSelected(c)
+    try {
+      const { data } = await api.get(`/api/consultations/${c.id}/`)
+      setSelected(data)
+    } catch {
+      // garde l'objet liste si le détail échoue
+    }
   }
 
+  const handleDelete = async (id) => {
+    try {
+      await api.delete(`/api/consultations/${id}/`)
+      if (selected?.id === id) setSelected(null)
+      await fetchAll()
+      toast.success('Déplacée dans la corbeille.')
+    } catch {
+      toast.error('Impossible de supprimer cette consultation.')
+    }
+  }
+
+  const handleDownloadPdf = async (e, consultationId) => {
+    e.stopPropagation()
+    try {
+      const { data, headers } = await api.get(
+        `/api/consultations/${consultationId}/compte-rendu-pdf/`,
+        { responseType: 'blob' }
+      )
+      const url = URL.createObjectURL(new Blob([data], { type: headers['content-type'] || 'application/pdf' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `compte_rendu_${consultationId}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error('Impossible de télécharger le compte-rendu.')
+    }
+  }
+
+  const symptomLabel = (val) => SYMPTOMS.find(s => s.value === val)?.label || val.replace(/_/g, ' ')
+
   return (
-    <div className="p-6 space-y-5 min-h-screen">
+    <div className="cm-page">
 
       {/* Header */}
-      <section className="surface-panel rounded-3xl px-6 py-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-emerald-700">Suivi clinique</p>
-            <h1 className="section-title mt-1 text-3xl font-black text-slate-900">Consultations médicales</h1>
-            <p className="mt-1.5 text-sm text-slate-500 max-w-xl">
-              Structurez l&apos;examen clinique, capturez les symptômes et exploitez l&apos;aide IA pour accélérer la prise de décision.
-            </p>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="rounded-2xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 border border-emerald-100">
-              {consultations.length} consultation(s)
-            </div>
-            <button
-              onClick={() => setShowForm(true)}
-              className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-5 py-2.5 font-semibold text-white text-sm shadow-[0_8px_24px_rgba(16,185,129,0.3)] transition-all hover:-translate-y-0.5"
-            >
-              <FilePlus size={17} />
-              Nouvelle consultation
-            </button>
-          </div>
+      <div className="cm-page-head">
+        <div>
+          <div className="cm-eyebrow">Suivi clinique</div>
+          <div className="cm-title">Consultations médicales</div>
+          <div className="cm-sub">{count} consultation(s) · Aide IA intégrée</div>
         </div>
-      </section>
+        <div className="cm-row" style={{ gap: 12 }}>
+          <span className="cm-pill cm-pill-success">{count} consult.</span>
+          <button onClick={() => { setShowTrash(true); fetchTrash() }} className="cm-btn cm-btn-ghost" title="Corbeille">
+            <Trash2 size={15} /> Corbeille
+          </button>
+          <button onClick={() => setShowForm(true)} className="cm-btn cm-btn-brand">
+            <FilePlus size={16} />
+            Nouvelle consultation
+          </button>
+        </div>
+      </div>
 
       {/* Content grid */}
       <section className="grid gap-5 lg:grid-cols-[1fr_380px]">
 
         {/* Table */}
-        <div className="surface-panel rounded-3xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100/80">
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Historique</p>
-            <h2 className="section-title mt-0.5 text-xl font-black text-slate-900">Dernières consultations</h2>
+        <div className="cm-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--ink-100)' }}>
+            <div className="cm-card-eyebrow">Historique</div>
+            <div className="cm-card-title">Dernières consultations</div>
           </div>
           {listLoading ? (
             <SkeletonTable rows={5} cols={5} />
@@ -243,26 +329,37 @@ export default function ConsultationsPage() {
                   <th className="px-5 py-3.5">Diagnostic</th>
                   <th className="px-5 py-3.5">IA</th>
                   <th className="px-5 py-3.5">Date</th>
+                  <th className="px-5 py-3.5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {consultations.map(c => (
                   <tr
                     key={c.id}
-                    onClick={() => setSelected(c)}
+                    onClick={() => handleSelectConsultation(c)}
                     className={`cursor-pointer transition-colors hover:bg-emerald-50/50 ${selected?.id === c.id ? 'bg-emerald-50/70' : ''}`}
                   >
-                    <td className="px-5 py-3.5 font-semibold text-slate-900 text-sm">{c.patient_name || '—'}</td>
-                    <td className="px-5 py-3.5 text-sm text-slate-500">
-                      {c.appointment_detail?.doctor_detail?.last_name ? `Dr. ${c.appointment_detail.doctor_detail.last_name}` : '—'}
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-slate-700 max-w-[180px] truncate">{c.diagnosis}</td>
+                    <td className="px-5 py-3.5 font-semibold text-slate-900 text-sm">{c.patient_nom || '—'}</td>
+                    <td className="px-5 py-3.5 text-sm text-slate-500">{c.medecin_nom || '—'}</td>
+                    <td className="px-5 py-3.5 text-sm text-slate-700 max-w-[180px] truncate">{c.diagnostic || '—'}</td>
                     <td className="px-5 py-3.5">
-                      {c.ia_used
+                      {c.ia_utilisee
                         ? <span className="badge badge-emerald">IA consultée</span>
                         : <span className="text-xs text-slate-400">—</span>}
                     </td>
-                    <td className="px-5 py-3.5 text-sm text-slate-500">{new Date(c.created_at).toLocaleDateString('fr-FR')}</td>
+                    <td className="px-5 py-3.5 text-sm text-slate-500">
+                      {c.date_consultation ? new Date(c.date_consultation).toLocaleDateString('fr-FR') : '—'}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <button
+                        onClick={e => handleDownloadPdf(e, c.id)}
+                        className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-emerald-100 hover:text-emerald-600 text-slate-400 flex items-center justify-center transition-colors"
+                        title="Télécharger le compte-rendu PDF"
+                        type="button"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">download</span>
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {consultations.length === 0 && (
@@ -272,6 +369,9 @@ export default function ConsultationsPage() {
             </table>
           </div>
           )}
+          {!listLoading && (
+            <Pagination count={count} pageSize={PAGE_SIZE} currentPage={page} onPageChange={setPage} />
+          )}
         </div>
 
         {/* Detail panel */}
@@ -280,20 +380,24 @@ export default function ConsultationsPage() {
             <div className="space-y-5">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Dossier clinique</p>
-                <h2 className="section-title mt-1 text-xl font-black text-slate-900">{selected.patient_name || 'Consultation'}</h2>
+                <h2 className="section-title mt-1 text-xl font-black text-slate-900">
+                  {selected.patient_nom || 'Consultation'}
+                </h2>
                 <p className="text-sm text-slate-500 mt-1">
-                  {selected.appointment_detail?.doctor_detail?.last_name ? `Dr. ${selected.appointment_detail.doctor_detail.last_name}` : 'Médecin non renseigné'}
+                  {selected.medecin_nom || 'Médecin non renseigné'}
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-2xl bg-slate-50 p-3.5">
                   <p className="label-xs text-slate-400">Diagnostic</p>
-                  <p className="mt-1.5 font-bold text-slate-900 text-sm">{selected.diagnosis}</p>
+                  <p className="mt-1.5 font-bold text-slate-900 text-sm">{selected.diagnostic || '—'}</p>
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-3.5">
                   <p className="label-xs text-slate-400">Date</p>
-                  <p className="mt-1.5 font-bold text-slate-900 text-sm">{new Date(selected.created_at).toLocaleDateString('fr-FR')}</p>
+                  <p className="mt-1.5 font-bold text-slate-900 text-sm">
+                    {selected.date_consultation ? new Date(selected.date_consultation).toLocaleDateString('fr-FR') : '—'}
+                  </p>
                 </div>
               </div>
 
@@ -303,17 +407,19 @@ export default function ConsultationsPage() {
                   Symptômes observés
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {(selected.symptoms || []).map(s => (
-                    <span key={s} className="badge badge-emerald">{s.replace(/_/g, ' ')}</span>
-                  ))}
-                  {(!selected.symptoms || selected.symptoms.length === 0) && <span className="text-sm text-slate-400">Aucun symptôme saisi.</span>}
+                  {Array.isArray(selected.symptomes) && selected.symptomes.length > 0
+                    ? selected.symptomes.map(s => (
+                        <span key={s} className="badge badge-emerald">{symptomLabel(s)}</span>
+                      ))
+                    : <span className="text-sm text-slate-400">Aucun symptôme saisi.</span>
+                  }
                 </div>
               </div>
 
               <div className="space-y-3 text-sm">
                 <div>
                   <p className="label-xs text-slate-400 mb-1.5">Examen clinique</p>
-                  <p className="text-slate-700 leading-6">{selected.clinical_exam || 'Non renseigné.'}</p>
+                  <p className="text-slate-700 leading-6">{selected.examen_clinique || 'Non renseigné.'}</p>
                 </div>
                 <div>
                   <p className="label-xs text-slate-400 mb-1.5">Notes</p>
@@ -321,14 +427,14 @@ export default function ConsultationsPage() {
                 </div>
               </div>
 
-              {selected.ia_suggestions?.length > 0 && (
+              {selected.suggestions_ia?.length > 0 && (
                 <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 p-4">
                   <div className="flex items-center gap-2 text-sm font-bold text-slate-800 mb-3">
                     <Sparkles size={15} className="text-emerald-600" />
                     Suggestions IA
                   </div>
                   <div className="space-y-2">
-                    {selected.ia_suggestions.map((s, i) => (
+                    {selected.suggestions_ia.map((s, i) => (
                       <div key={`${s.disease}-${i}`} className="rounded-xl bg-white/80 px-3.5 py-3">
                         <div className="flex items-center justify-between gap-3">
                           <p className="font-bold text-slate-900 text-sm">{s.disease}</p>
@@ -342,7 +448,7 @@ export default function ConsultationsPage() {
               )}
 
               <button
-                onClick={() => setConfirmDelete({ id: selected.id, name: selected.patient_name })}
+                onClick={() => setConfirmDelete({ id: selected.id, name: selected.patient_nom })}
                 className="flex w-full items-center justify-center gap-2 rounded-2xl bg-rose-500/10 px-4 py-3 font-semibold text-rose-700 transition-colors hover:bg-rose-500/15 mt-4"
               >
                 <Trash2 size={16} />
@@ -372,7 +478,7 @@ export default function ConsultationsPage() {
                 <p className="label-xs text-emerald-700">Nouvelle consultation</p>
                 <h2 className="section-title mt-1.5 text-2xl font-black text-slate-900">Rédiger un compte rendu clinique</h2>
               </div>
-              <button onClick={() => { setShowForm(false); setIaSuggestions(null) }} className="rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 transition-colors">
+              <button onClick={closeForm} className="rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 transition-colors">
                 <span className="material-symbols-outlined text-lg">close</span>
               </button>
             </div>
@@ -381,29 +487,60 @@ export default function ConsultationsPage() {
               {/* Left column */}
               <div className="space-y-5">
                 <div>
-                  <label className={labelClass}>Rendez-vous associé</label>
-                  <select required value={form.appointment} onChange={e => applyAppointmentDefaults(e.target.value)} className={inputClass}>
-                    <option value="">Sélectionner un rendez-vous</option>
+                  <label className={labelClass}>Rendez-vous associé <span className="text-slate-400 font-normal">(optionnel)</span></label>
+                  <select value={form.rendez_vous} onChange={e => applyAppointmentDefaults(e.target.value)} className={inputClass}>
+                    <option value="">— Aucun rendez-vous —</option>
                     {availableAppointments.map(a => (
                       <option key={a.id} value={a.id}>
-                        {a.patient_detail?.full_name} — {new Date(a.scheduled_at).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+                        {a.patient_nom || '—'} — {fmtDate(a.date_heure)}
                       </option>
                     ))}
                   </select>
                 </div>
 
+                {!form.rendez_vous && (
+                  <div>
+                    <label className={labelClass}>Patient <span className="text-rose-500">*</span></label>
+                    <select
+                      required
+                      value={form.patient}
+                      onChange={e => setForm(prev => ({ ...prev, patient: e.target.value }))}
+                      className={inputClass}
+                    >
+                      <option value="">Sélectionner un patient</option>
+                      {patients.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.nom_complet || `${p.prenom} ${p.nom}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div>
-                  <label className={labelClass}>Symptômes observés</label>
+                  <label className={labelClass}>
+                    Symptômes observés
+                    {form.symptomes.length > 0 && (
+                      <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', padding: '1px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: 'rgba(42,155,105,0.15)', color: '#2a9b69' }}>
+                        {form.symptomes.length} sélectionné{form.symptomes.length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </label>
                   <div className="grid grid-cols-2 gap-3">
                     {SYMPTOMS.map(s => {
-                      const active = form.symptoms.includes(s.value)
+                      const active = form.symptomes.includes(s.value)
                       return (
                         <button
                           key={s.value} type="button" onClick={() => toggleSymptom(s.value)}
-                          className={`rounded-2xl border px-4 py-3.5 text-left transition-all ${active ? 'border-emerald-300 bg-emerald-50 shadow-[0_6px_20px_rgba(16,185,129,0.12)]' : 'border-slate-200 bg-white hover:border-emerald-200 hover:bg-emerald-50/40'}`}
+                          style={active ? {
+                            background: '#059669',
+                            borderColor: '#047857',
+                            boxShadow: '0 6px 20px rgba(16,185,129,0.3)',
+                          } : {}}
+                          className={`rounded-2xl border px-4 py-3.5 text-left transition-all duration-150 ${active ? 'border-emerald-600' : 'border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/50'}`}
                         >
-                          <p className="font-bold text-sm text-slate-900">{s.label}</p>
-                          <p className="mt-0.5 text-xs text-slate-500 leading-5">{s.hint}</p>
+                          <p style={{ color: active ? '#ffffff' : undefined }} className={`font-bold text-sm ${active ? '' : 'text-slate-900'}`}>{s.label}</p>
+                          <p style={{ color: active ? 'rgba(209,250,229,0.85)' : undefined }} className={`mt-0.5 text-xs leading-5 ${active ? '' : 'text-slate-500'}`}>{s.hint}</p>
                         </button>
                       )
                     })}
@@ -412,11 +549,11 @@ export default function ConsultationsPage() {
 
                 <div>
                   <label className={labelClass}>Examen clinique</label>
-                  <textarea rows={4} value={form.clinical_exam} onChange={e => setForm({ ...form, clinical_exam: e.target.value })} className={`${inputClass} resize-none`} />
+                  <textarea rows={4} value={form.examen_clinique} onChange={e => setForm({ ...form, examen_clinique: e.target.value })} className={`${inputClass} resize-none`} />
                 </div>
                 <div>
                   <label className={labelClass}>Diagnostic retenu</label>
-                  <input type="text" required value={form.diagnosis} onChange={e => setForm({ ...form, diagnosis: e.target.value })} className={inputClass} />
+                  <input type="text" required value={form.diagnostic} onChange={e => setForm({ ...form, diagnostic: e.target.value })} className={inputClass} />
                 </div>
                 <div>
                   <label className={labelClass}>Notes complémentaires</label>
@@ -473,7 +610,7 @@ export default function ConsultationsPage() {
                   </div>
 
                   <button
-                    type="button" onClick={handleAskIA} disabled={iaLoading || form.symptoms.length === 0}
+                    type="button" onClick={handleAskIA} disabled={iaLoading || form.symptomes.length === 0}
                     className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {iaLoading ? <span className="h-4 w-4 rounded-full border-2 border-slate-950/20 border-t-slate-950 animate-spin" /> : <><Sparkles size={15} />Lancer l&apos;analyse IA</>}
@@ -489,7 +626,7 @@ export default function ConsultationsPage() {
                       {iaSuggestions.map((s, i) => (
                         <button
                           key={`${s.disease}-${i}`} type="button"
-                          onClick={() => setForm(prev => ({ ...prev, diagnosis: s.disease }))}
+                          onClick={() => setForm(prev => ({ ...prev, diagnostic: s.disease }))}
                           className="w-full rounded-xl bg-white px-4 py-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
                         >
                           <div className="flex items-center justify-between gap-3">
@@ -509,7 +646,7 @@ export default function ConsultationsPage() {
               {error && <div className="xl:col-span-2 rounded-2xl bg-rose-50 border border-rose-100 px-4 py-3 text-sm text-rose-700">{error}</div>}
 
               <div className="xl:col-span-2 flex justify-end gap-3 pt-1">
-                <button type="button" onClick={() => { setShowForm(false); setIaSuggestions(null) }} className="rounded-2xl bg-slate-100 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200 transition-colors">
+                <button type="button" onClick={closeForm} className="rounded-2xl bg-slate-100 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200 transition-colors">
                   Annuler
                 </button>
                 <button type="submit" disabled={loading} className="rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(16,185,129,0.3)] hover:-translate-y-0.5 transition-all disabled:opacity-60">
@@ -523,11 +660,60 @@ export default function ConsultationsPage() {
 
       {confirmDelete && (
         <ConfirmModal
-          title="Supprimer la consultation ?"
-          message={`La consultation de ${confirmDelete.name} sera définitivement supprimée.`}
+          title="Mettre à la corbeille ?"
+          message={`La consultation de ${confirmDelete.name} sera déplacée dans la corbeille.`}
           onConfirm={() => handleDelete(confirmDelete.id)}
           onClose={() => setConfirmDelete(null)}
         />
+      )}
+
+      {showTrash && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setShowTrash(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-rose-50 flex items-center justify-center text-rose-500"><Trash2 size={16} /></div>
+                <div>
+                  <div className="font-bold text-slate-800 text-sm">Corbeille — Consultations</div>
+                  <div className="text-xs text-slate-400">{trashItems.length} élément{trashItems.length !== 1 ? 's' : ''}</div>
+                </div>
+              </div>
+              <button onClick={() => setShowTrash(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">✕</button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-6 py-4">
+              {trashLoading ? (
+                <div className="text-center text-slate-400 py-10 text-sm">Chargement…</div>
+              ) : trashItems.length === 0 ? (
+                <div className="text-center py-14">
+                  <div className="text-4xl mb-3">🗑️</div>
+                  <div className="text-slate-500 font-semibold">La corbeille est vide</div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {trashItems.map(c => (
+                    <div key={c.id} className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200 gap-4">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-800 text-sm truncate">{c.patient_nom || c.patient_detail?.nom_complet}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          {c.date_consultation && new Date(c.date_consultation).toLocaleDateString('fr-FR')}
+                          {c.diagnostic && ` — ${c.diagnostic}`}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={() => handleRestore(c.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold transition-colors">
+                          <RotateCcw size={13} /> Restaurer
+                        </button>
+                        <button onClick={() => handleDeleteForever(c.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold transition-colors">
+                          <Trash2 size={13} /> Supprimer
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

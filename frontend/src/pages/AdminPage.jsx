@@ -1,15 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import api from '../api/axios'
 
 const ROLE_CONFIG = {
-  admin:     { label: 'Administrateur', icon: 'shield_person', colorClass: 'bg-error-container text-error'       },
-  doctor:    { label: 'Médecin',        icon: 'stethoscope',   colorClass: 'bg-primary/10 text-primary'          },
-  secretary: { label: 'Secrétaire',     icon: 'assignment_ind',colorClass: 'bg-secondary/10 text-secondary'      },
+  administrateur: { label: 'Administrateur', icon: 'shield_person', colorClass: 'bg-error-container text-error'       },
+  medecin:        { label: 'Médecin',        icon: 'stethoscope',   colorClass: 'bg-primary/10 text-primary'          },
+  secretaire:     { label: 'Secrétaire',     icon: 'assignment_ind',colorClass: 'bg-secondary/10 text-secondary'      },
 }
+
+const SPECIALITES = [
+  'generaliste','cardiologue','dermatologue','gynecologue','pediatre',
+  'ophtalmologue','dentiste','radiologue','chirurgien','neurologue',
+  'pneumologue','rhumatologue','endocrinologue','gastro','psy','urgentiste','autre',
+]
 
 const EMPTY_FORM = {
   username: '', first_name: '', last_name: '',
-  email: '', phone: '', role: 'secretary', password: ''
+  email: '', telephone: '', role: 'secretaire', password: '', specialite: '',
 }
 
 const inputClass = "w-full bg-surface-container-low border-0 rounded-xl px-4 py-3 text-on-surface text-sm placeholder:text-outline-variant/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-surface-container-lowest transition-all duration-300"
@@ -17,17 +23,35 @@ const labelClass = "block text-xs font-semibold text-on-surface-variant uppercas
 
 export default function AdminPage() {
   const [users, setUsers] = useState([])
+  const [auditLogs, setAuditLogs] = useState([])
+  const [auditFilter, setAuditFilter] = useState('')
+  const [tab, setTab] = useState('users') // 'users' | 'audit'
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  const fetchUsers = async () => {
-    const { data } = await api.get('/api/users/')
-    setUsers(data.results || data)
-  }
-  useEffect(() => { fetchUsers() }, [])
+  const fetchUsers = useCallback(async () => {
+    try {
+      const { data } = await api.get('/api/users/?page_size=500')
+      setUsers(data.results || data)
+    } catch { /* liste vide en cas d'erreur réseau */ }
+  }, [])
+  useEffect(() => {
+    let ignore = false
+    const charger = async () => {
+      const [usersRes, logsRes] = await Promise.allSettled([
+        api.get('/api/users/?page_size=500'),
+        api.get('/api/auditlog/?page_size=200'),
+      ])
+      if (ignore) return
+      if (usersRes.status === 'fulfilled') setUsers(usersRes.value.data.results || usersRes.value.data)
+      if (logsRes.status === 'fulfilled') setAuditLogs(logsRes.value.data.results || logsRes.value.data)
+    }
+    charger()
+    return () => { ignore = true }
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setLoading(true); setError(''); setSuccess('')
@@ -41,28 +65,31 @@ export default function AdminPage() {
 
   const handleDelete = async (id, username) => {
     if (!confirm(`Supprimer le compte "${username}" ?`)) return
-    await api.delete(`/api/users/${id}/`)
-    fetchUsers()
+    try {
+      await api.delete(`/api/users/${id}/`)
+      fetchUsers()
+    } catch {
+      setError('Impossible de supprimer ce compte.')
+    }
   }
 
   const roleGroups = {
-    admin:     users.filter(u => u.role === 'admin'),
-    doctor:    users.filter(u => u.role === 'doctor'),
-    secretary: users.filter(u => u.role === 'secretary'),
+    administrateur: users.filter(u => u.role === 'administrateur'),
+    medecin:        users.filter(u => u.role === 'medecin'),
+    secretaire:     users.filter(u => u.role === 'secretaire'),
   }
 
   return (
-    <div className="p-8 space-y-6 max-w-[1400px]">
+    <div className="cm-page">
       {/* En-tête */}
-      <div className="flex items-center justify-between">
+      <div className="cm-page-head">
         <div>
-          <h1 className="text-3xl font-bold text-on-surface tracking-tight" style={{ fontFamily: 'Manrope, sans-serif' }}>Administration</h1>
-          <p className="text-on-surface-variant text-sm mt-1">Gestion des comptes utilisateurs</p>
+          <div className="cm-eyebrow">Sécurité</div>
+          <div className="cm-title">Administration</div>
+          <div className="cm-sub">Gestion des comptes et traçabilité</div>
         </div>
-        <button onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 primary-gradient text-white px-5 py-2.5 rounded-xl font-medium text-sm hover:-translate-y-0.5 transition-all"
-          style={{ boxShadow: '0 4px 12px rgba(0,104,95,0.2)' }}>
-          <span className="material-symbols-outlined text-lg">person_add</span>
+        <button onClick={() => setShowForm(true)} className="cm-btn cm-btn-brand">
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>person_add</span>
           Nouvel utilisateur
         </button>
       </div>
@@ -80,6 +107,166 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* Tabs */}
+      <div className="flex gap-2 bg-slate-100 p-1 rounded-2xl w-fit">
+        {[
+          { key: 'users',  label: 'Utilisateurs', icon: 'group' },
+          { key: 'audit',  label: 'Logs d\'audit', icon: 'history' },
+        ].map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+              tab === t.key ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">{t.icon}</span>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'audit' && (
+        <div className="bg-surface-container-lowest rounded-2xl ghost-border overflow-hidden">
+          {/* Header */}
+          <div className="px-6 py-4 border-b border-outline-variant/10 flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold text-on-surface" style={{ fontFamily: 'Manrope, sans-serif' }}>Journal d'audit</h2>
+              <p className="text-xs text-on-surface-variant mt-0.5">{auditLogs.length} entrée(s) enregistrée(s)</p>
+            </div>
+            <div className="flex gap-2">
+              {[
+                { key: '', label: 'Tout' },
+                { key: '0', label: 'Créations' },
+                { key: '1', label: 'Modifications' },
+                { key: '2', label: 'Suppressions' },
+              ].map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setAuditFilter(f.key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    auditFilter === f.key
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
+                >{f.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-widest text-slate-400 border-b border-slate-100">
+                <tr>
+                  <th className="px-5 py-3.5">Date &amp; heure</th>
+                  <th className="px-5 py-3.5">Auteur</th>
+                  <th className="px-5 py-3.5">Action</th>
+                  <th className="px-5 py-3.5">Module</th>
+                  <th className="px-5 py-3.5">Objet concerné</th>
+                  <th className="px-5 py-3.5">Détails</th>
+                  <th className="px-5 py-3.5">IP</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {auditLogs
+                  .filter(log => auditFilter === '' || String(log.action) === auditFilter)
+                  .slice(0, 100)
+                  .map((log, i) => (
+                  <tr key={i} className="hover:bg-emerald-50/30 transition-colors">
+
+                    {/* Date */}
+                    <td className="px-5 py-3.5 whitespace-nowrap">
+                      <p className="text-slate-700 font-medium text-xs">
+                        {new Date(log.timestamp).toLocaleDateString('fr-FR')}
+                      </p>
+                      <p className="text-slate-400 text-[11px] mt-0.5">
+                        {new Date(log.timestamp).toLocaleTimeString('fr-FR')}
+                      </p>
+                    </td>
+
+                    {/* Auteur */}
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 text-[10px] font-black shrink-0">
+                          {log.actor_name === 'Système' ? '⚙' : log.actor_name?.charAt(0)?.toUpperCase() || '?'}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-800 text-xs leading-tight">{log.actor_name || 'Système'}</p>
+                          {log.actor_role && (
+                            <p className="text-[10px] text-slate-400 leading-tight">{log.actor_role}</p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Action badge */}
+                    <td className="px-5 py-3.5">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                        log.action === 0 ? 'bg-emerald-100 text-emerald-700' :
+                        log.action === 1 ? 'bg-amber-100 text-amber-700' :
+                                           'bg-rose-100 text-rose-700'
+                      }`}>
+                        {log.action === 0 ? '＋' : log.action === 1 ? '✎' : '✕'}
+                        {log.action_label || (log.action === 0 ? 'Création' : log.action === 1 ? 'Modification' : 'Suppression')}
+                      </span>
+                    </td>
+
+                    {/* Module */}
+                    <td className="px-5 py-3.5 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5 text-xs text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg font-medium">
+                        <span>{log.module_icon || '📋'}</span>
+                        {log.module || '—'}
+                      </span>
+                    </td>
+
+                    {/* Objet */}
+                    <td className="px-5 py-3.5 max-w-[200px]">
+                      <p className="text-slate-700 text-xs leading-5 truncate" title={log.object_repr}>
+                        {log.object_repr || '—'}
+                      </p>
+                    </td>
+
+                    {/* Détails (changes_summary) */}
+                    <td className="px-5 py-3.5 max-w-[200px]">
+                      {log.changes_summary?.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {log.changes_summary.map((change, ci) => (
+                            <span key={ci} className="inline-block text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md leading-5">
+                              {change}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-300 text-xs">—</span>
+                      )}
+                    </td>
+
+                    {/* IP */}
+                    <td className="px-5 py-3.5">
+                      <span className="font-mono text-[11px] text-slate-400">{log.remote_addr || '—'}</span>
+                    </td>
+
+                  </tr>
+                ))}
+                {auditLogs.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-16 text-center">
+                      <div className="flex flex-col items-center gap-3 text-slate-400">
+                        <span className="material-symbols-outlined text-4xl opacity-30">manage_search</span>
+                        <p className="text-sm font-medium">Aucun log d'audit disponible</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab === 'users' && (
+      <div className="space-y-6">
       {/* Stat cards */}
       <div className="grid grid-cols-3 gap-5">
         {Object.entries(ROLE_CONFIG).map(([role, { label, icon, colorClass }]) => (
@@ -131,7 +318,7 @@ export default function AdminPage() {
                     </td>
                     <td className="px-6 py-4 text-sm text-on-surface">{u.first_name} {u.last_name}</td>
                     <td className="px-6 py-4 text-sm text-on-surface-variant">{u.email || '—'}</td>
-                    <td className="px-6 py-4 text-sm text-on-surface-variant">{u.phone || '—'}</td>
+                    <td className="px-6 py-4 text-sm text-on-surface-variant">{u.telephone || '—'}</td>
                     <td className="px-6 py-4">
                       <button onClick={() => handleDelete(u.id, u.username)}
                         className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-error-container text-on-surface-variant hover:text-error transition-all">
@@ -150,6 +337,9 @@ export default function AdminPage() {
           </div>
         ))}
       </div>
+
+      </div>
+      )}
 
       {/* Modal */}
       {showForm && (
@@ -204,9 +394,19 @@ export default function AdminPage() {
                 </div>
                 <div>
                   <label className={labelClass}>Téléphone</label>
-                  <input type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className={inputClass} />
+                  <input type="tel" value={form.telephone} onChange={e => setForm({ ...form, telephone: e.target.value })} className={inputClass} />
                 </div>
               </div>
+
+              {form.role === 'medecin' && (
+                <div>
+                  <label className={labelClass}>Spécialité</label>
+                  <select value={form.specialite} onChange={e => setForm({ ...form, specialite: e.target.value })} className={inputClass}>
+                    <option value="">Sélectionner une spécialité</option>
+                    {SPECIALITES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className={labelClass}>Mot de passe</label>

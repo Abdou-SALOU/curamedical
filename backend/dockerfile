@@ -1,16 +1,23 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Dépendances système
-RUN apt-get update && apt-get install -y \
+# ── Dépendances système ────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Dépendances Python
+# ── Dépendances Python ─────────────────────────────────────────
+# Copiées EN PREMIER → layer cachée tant que requirements.txt ne change pas
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# ── Code source ────────────────────────────────────────────────
 COPY . .
 
+# ── Entrypoint : migrations auto avant de démarrer ────────────
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 EXPOSE 8000
+ENTRYPOINT ["/entrypoint.sh"]

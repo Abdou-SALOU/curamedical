@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Confirmation de rendez-vous — CuraMedical</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f1f5f9;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">
+
+        <!-- Header -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#0f7b50 0%,#4eb583 100%);padding:36px 40px;text-align:center;">
+            <p style="margin:0 0 6px 0;font-size:11px;font-weight:700;letter-spacing:0.18em;color:rgba(255,255,255,0.7);text-transform:uppercase;">Plateforme médicale</p>
+            <h1 style="margin:0;font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-0.02em;">CuraMedical</h1>
+            <p style="margin:10px 0 0 0;font-size:13px;color:rgba(255,255,255,0.8);">Votre santé, notre priorité</p>
+          </td>
+        </tr>
+
+        <!-- Badge -->
+        <tr>
+          <td style="padding:28px 40px 0 40px;text-align:center;">
+            <span style="display:inline-block;background:#f0fdf4;border:1px solid #86efac;color:#166534;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:6px 18px;border-radius:999px;">
+              ✔ Rendez-vous {{ statut }}
+            </span>
+          </td>
+        </tr>
+
+        <!-- Greeting -->
+        <tr>
+          <td style="padding:24px 40px 0 40px;">
+            <p style="margin:0;font-size:17px;color:#1e293b;line-height:1.6;">
+              Bonjour <strong>{{ patient_nom }}</strong>,
+            </p>
+            <p style="margin:12px 0 0 0;font-size:15px;color:#475569;line-height:1.7;">
+              Votre rendez-vous médical a bien été enregistré sur la plateforme CuraMedical.
+              Voici le récapitulatif de votre consultation à venir.
+            </p>
+          </td>
+        </tr>
+
+        <!-- Info card -->
+        <tr>
+          <td style="padding:24px 40px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+              <tr>
+                <td style="padding:16px 24px;border-bottom:1px solid #e2e8f0;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="width:140px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;padding-right:12px;">Médecin</td>
+                      <td style="font-size:15px;font-weight:700;color:#0f172a;">{{ medecin_nom }}</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:16px 24px;border-bottom:1px solid #e2e8f0;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="width:140px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;padding-right:12px;">Date</td>
+                      <td style="font-size:15px;font-weight:700;color:#0f172a;">{{ date_rdv }}</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:16px 24px;border-bottom:1px solid #e2e8f0;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="width:140px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;padding-right:12px;">Heure</td>
+                      <td style="font-size:15px;font-weight:700;color:#0f172a;">{{ heure_rdv }}</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              {% if motif %}
+              <tr>
+                <td style="padding:16px 24px;{% if not is_visio %}{% endif %}border-bottom:{% if is_visio %}1px solid #e2e8f0{% else %}none{% endif %};">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="width:140px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;padding-right:12px;">Motif</td>
+                      <td style="font-size:14px;color:#334155;">{{ motif }}</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              {% endif %}
+              {% if is_visio %}
+              <tr>
+                <td style="padding:16px 24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="width:140px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;padding-right:12px;">Type</td>
+                      <td style="font-size:14px;color:#334155;">📹 Téléconsultation (vidéo)</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              {% endif %}
+            </table>
+          </td>
+        </tr>
+
+        <!-- Lien visioconférence -->
+        {% if is_visio and jitsi_url %}
+        <tr>
+          <td style="padding:0 40px 24px 40px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#eff6ff;border:1px solid #93c5fd;border-radius:12px;overflow:hidden;">
+              <tr>
+                <td style="padding:20px 24px;">
+                  <p style="margin:0 0 4px 0;font-size:13px;font-weight:700;color:#1d4ed8;">🎥 Lien de votre vidéoconférence</p>
+                  <p style="margin:0 0 12px 0;font-size:12px;color:#3b82f6;line-height:1.5;">
+                    Rejoignez ce lien à l'heure exacte de votre rendez-vous. Le médecin vous y attendra.
+                  </p>
+                  <a href="{{ jitsi_url }}"
+                     style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:700;">
+                    🎥 Rejoindre la consultation vidéo
+                  </a>
+                  <p style="margin:10px 0 0 0;font-size:11px;color:#6b7280;word-break:break-all;">{{ jitsi_url }}</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        {% endif %}
+
+        <!-- Reminder -->
+        <tr>
+          <td style="padding:0 40px 28px 40px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;">
+              <tr>
+                <td style="padding:16px 20px;">
+                  <p style="margin:0;font-size:13px;font-weight:700;color:#92400e;">⏰ Rappel important</p>
+                  {% if is_visio %}
+                  <p style="margin:5px 0 0 0;font-size:13px;color:#78350f;line-height:1.6;">
+                    Merci de vous connecter <strong>5 minutes avant</strong> l'heure prévue via le lien ci-dessus.
+                    Assurez-vous d'avoir une bonne connexion internet et une caméra fonctionnelle.
+                  </p>
+                  {% else %}
+                  <p style="margin:5px 0 0 0;font-size:13px;color:#78350f;line-height:1.6;">
+                    Merci de vous présenter au cabinet <strong>10 minutes avant</strong> l'heure prévue.
+                    En cas d'empêchement, veuillez prévenir le secrétariat dans les meilleurs délais.
+                  </p>
+                  {% endif %}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- CTA -->
+        {% if portal_url %}
+        <tr>
+          <td style="padding:0 40px 32px 40px;text-align:center;">
+            <a href="{{ portal_url }}" style="display:inline-block;background:#4eb583;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:700;">
+              Voir mon rendez-vous en ligne
+            </a>
+          </td>
+        </tr>
+        {% endif %}
+
+        <!-- Divider -->
+        <tr><td style="padding:0 40px;"><hr style="border:none;border-top:1px solid #f1f5f9;margin:0;"></td></tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="padding:24px 40px;text-align:center;">
+            <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6;">
+              En cas d'urgence, composez le <strong style="color:#ef4444;">15</strong> (SAMU) ou le <strong style="color:#ef4444;">112</strong>.
+            </p>
+            <p style="margin:12px 0 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">
+              Cet email a été généré automatiquement par la plateforme <strong>CuraMedical</strong>.<br>
+              Merci de ne pas y répondre directement.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

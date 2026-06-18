@@ -1,7 +1,7 @@
 print("Démarrage du script d'entraînement...")
 import pandas as pd
 import numpy as np
-from sklearn.naive_bayes import MultinomialNB
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import LabelEncoder
@@ -16,15 +16,14 @@ DATASET_PATH = 'Fast_Dataset.csv'
 
 # 1. Load dataset
 if not os.path.exists(DATASET_PATH):
-    print(f"❌ Error: Dataset {DATASET_PATH} not found.")
+    print(f"Error: Dataset {DATASET_PATH} not found.")
     exit(1)
 
-print(f"Chargement de {DATASET_PATH}...")
 try:
     df = pd.read_csv(DATASET_PATH)
-    print(f"✅ Loaded dataset: {len(df)} rows, {df['diseases'].nunique()} diseases")
+    print(f"Loaded dataset: {len(df)} rows, {df['diseases'].nunique()} diseases")
 except Exception as e:
-    print(f"❌ Error reading CSV: {e}")
+    print(f"Error reading CSV: {e}")
     exit(1)
 
 # 2. Cleanup
@@ -44,15 +43,15 @@ X_train, X_test, y_train, y_test = train_test_split(
     X, y_encoded, test_size=0.1, random_state=42
 )
 
-# 5. Stronger Training (Better precision)
-print(f"🚀 Training MultinomialNB on {len(FEATURES)} symptoms...")
-clf = MultinomialNB()
+# 5. Stronger Training (Random Forest)
+print(f"Training RandomForestClassifier on {len(FEATURES)} symptoms...")
+clf = RandomForestClassifier(n_estimators=30, random_state=42)
 clf.fit(X_train, y_train)
 
 # 6. Evaluation
 y_pred = clf.predict(X_test)
 accuracy = accuracy_score(y_test, y_pred)
-print(f"✅ Accuracy: {accuracy * 100:.1f}%")
+print(f"Accuracy: {accuracy * 100:.1f}%")
 
 # 7. Save
 print("Sauvegarde des modèles...")
@@ -60,6 +59,6 @@ joblib.dump(clf, 'model/classifier.pkl')
 joblib.dump(le,  'model/label_encoder.pkl')
 joblib.dump(FEATURES, 'model/features_list.pkl')
 
-print(f"\n✅ Model updated and saved successfully!")
+print(f"\nModel updated and saved successfully!")
 print(f"   Symptoms count: {len(FEATURES)}")
 print(f"   Diseases count: {len(le.classes_)}")
