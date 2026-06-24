@@ -84,14 +84,18 @@ class RendezVousViewSet(viewsets.ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
         user = self.request.user
         if user.role == 'patient':
-            try:
-                patient = user.patient_profile
-                serializer.save(patient=patient)
-            except Exception:
-                from rest_framework.exceptions import ValidationError
+            patient = getattr(user, 'patient_profile', None)
+            if patient is None:
                 raise ValidationError("Votre compte n'est pas lié à un dossier patient. Contactez le secrétariat.")
+            if patient.statut_validation != 'VALIDE':
+                raise ValidationError(
+                    "Votre inscription est en attente de validation par le secrétariat. "
+                    "Vous pourrez prendre rendez-vous une fois votre dossier validé."
+                )
+            serializer.save(patient=patient)
         else:
             serializer.save()
 

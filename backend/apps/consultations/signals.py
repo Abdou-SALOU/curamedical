@@ -118,8 +118,10 @@ def _send_email(patient, medecin, consultation, date_str, salutation, pdf_bytes)
         from django.template.loader import render_to_string
         from django.conf import settings
 
-        base_url    = getattr(settings, 'PUBLIC_BASE_URL', '').rstrip('/')
-        portal_url  = f"{base_url}/login" if base_url else None
+        # Lien vers l'espace patient = FRONTEND (et non PUBLIC_BASE_URL qui pointe
+        # sur le backend ngrok et n'a pas de route /login).
+        frontend_url = getattr(settings, 'FRONTEND_URL', '').rstrip('/')
+        portal_url   = f"{frontend_url}/login" if frontend_url else None
         symptomes_fr = _translate_symptoms(consultation.symptomes)
 
         context = {

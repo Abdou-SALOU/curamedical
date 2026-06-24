@@ -15,6 +15,12 @@ class Patient(models.Model):
         ('F', 'Féminin'),
     ]
 
+    STATUT_VALIDATION_CHOICES = [
+        ('EN_ATTENTE', 'En attente de validation'),
+        ('VALIDE', 'Validé'),
+        ('REFUSE', 'Refusé'),
+    ]
+
     # Lien vers l'utilisateur (optionnel — un patient peut ne pas avoir de compte)
     utilisateur = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -33,7 +39,7 @@ class Patient(models.Model):
     cin = models.CharField("CIN", max_length=20, unique=True, blank=True, null=True)
 
     # Coordonnées
-    telephone = models.CharField("Téléphone", max_length=15)
+    telephone = models.CharField("Téléphone", max_length=20, unique=True)
     email = models.EmailField("Email", blank=True, null=True)
     adresse = models.TextField("Adresse", blank=True, null=True)
     ville = models.CharField("Ville", max_length=100, blank=True, null=True)
@@ -50,6 +56,16 @@ class Patient(models.Model):
     antecedents_medicaux = models.TextField("Antécédents médicaux", blank=True, null=True)
     medicaments_en_cours = models.TextField("Médicaments en cours", blank=True, null=True)
 
+    # Validation par le secrétariat (auto-inscription portail)
+    # Par défaut VALIDE : les patients créés par le staff sont validés d'office.
+    # Seule l'auto-inscription depuis le portail démarre en EN_ATTENTE.
+    statut_validation = models.CharField(
+        "Statut de validation",
+        max_length=12,
+        choices=STATUT_VALIDATION_CHOICES,
+        default='VALIDE',
+    )
+
     # Métadonnées
     cree_le = models.DateTimeField(auto_now_add=True)
     modifie_le = models.DateTimeField(auto_now=True)
@@ -60,12 +76,24 @@ class Patient(models.Model):
         verbose_name_plural = "Patients"
         ordering = ['nom', 'prenom']
 
+    def save(self, *args, **kwargs):
+        # Numéro toujours stocké au format international E.164 (« +212600112233 »)
+        # pour une identification fiable par WhatsApp (voir apps.common.phone).
+        if self.telephone:
+            from apps.common.phone import normalize_phone
+            self.telephone = normalize_phone(self.telephone)
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.nom.upper()} {self.prenom}"
 
     @property
     def nom_complet(self):
         return f"{self.nom.upper()} {self.prenom}"
+
+    @property
+    def est_valide(self):
+        return self.statut_validation == 'VALIDE'
 
     @property
     def age(self):

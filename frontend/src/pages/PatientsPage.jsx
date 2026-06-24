@@ -5,7 +5,7 @@ import { toast } from '../store/toastStore'
 import { SkeletonTable, SkeletonPanel } from '../components/Skeleton'
 import ConfirmModal from '../components/ConfirmModal'
 import Pagination from '../components/Pagination'
-import { UserPlus, Search, Eye, Trash2, Phone, Mail, Droplets, ShieldAlert, X } from 'lucide-react'
+import { UserPlus, Search, Eye, Trash2, Phone, Mail, Droplets, ShieldAlert, X, Clock, Check, UserCheck } from 'lucide-react'
 import useAuthStore from '../store/authStore'
 
 const PAGE_SIZE = 10
@@ -47,6 +47,13 @@ export default function PatientsPage() {
   const [saving, setSaving]         = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
 
+  // ── Demandes d'inscription en attente de validation ────────────
+  const [tab, setTab]               = useState('actifs') // 'actifs' | 'attente'
+  const [pending, setPending]       = useState([])
+  const [pendingLoading, setPendingLoading] = useState(false)
+  const [actionId, setActionId]     = useState(null)
+  const [confirmRefuse, setConfirmRefuse] = useState(null)
+
   // ── Recherche avec debounce ────────────────────────────────────
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 350)
@@ -81,6 +88,52 @@ export default function PatientsPage() {
   }, [page, debouncedSearch, refreshKey])
 
   const refresh = () => setRefreshKey(k => k + 1)
+
+  // ── Chargement des demandes en attente (badge + onglet) ────────
+  useEffect(() => {
+    if (!isStaff) return
+    let ignore = false
+    const charger = async () => {
+      setPendingLoading(true)
+      try {
+        const { data } = await api.get('/api/patients/en-attente/')
+        if (!ignore) setPending(data.results || data)
+      } catch {
+        if (!ignore) toast.error('Impossible de charger les demandes en attente.')
+      } finally {
+        if (!ignore) setPendingLoading(false)
+      }
+    }
+    charger()
+    return () => { ignore = true }
+  }, [isStaff, refreshKey])
+
+  // ── Valider / Refuser une inscription ──────────────────────────
+  const handleValider = async (id) => {
+    setActionId(id)
+    try {
+      await api.post(`/api/patients/${id}/valider/`)
+      toast.success('Inscription validée. Le patient peut maintenant prendre rendez-vous.')
+      refresh()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Impossible de valider cette inscription.')
+    } finally {
+      setActionId(null)
+    }
+  }
+
+  const handleRefuser = async (id) => {
+    setActionId(id)
+    try {
+      await api.post(`/api/patients/${id}/refuser/`)
+      toast.success('Inscription refusée.')
+      refresh()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Impossible de refuser cette inscription.')
+    } finally {
+      setActionId(null)
+    }
+  }
 
   const fetchDetail = useCallback(async (id) => {
     setSelectedId(id)
@@ -173,7 +226,105 @@ export default function PatientsPage() {
         </div>
       </div>
 
+      {/* ── Onglets (staff) ── */}
+      {isStaff && (
+        <div className="flex rounded-xl bg-slate-100 p-1 gap-1 mb-4 w-fit">
+          {[['actifs', 'Patients'], ['attente', 'Demandes en attente']].map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => setTab(v)}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                tab === v ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {v === 'attente' && <Clock size={13} />}
+              {label}
+              {v === 'attente' && pending.length > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold">
+                  {pending.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Onglet : Demandes en attente ── */}
+      {isStaff && tab === 'attente' && (
+        <div className="cm-card" style={{ padding: 0, overflow: 'hidden' }}>
+          {pendingLoading ? (
+            <SkeletonTable rows={4} cols={4} />
+          ) : pending.length === 0 ? (
+            <div className="py-16 text-center">
+              <div className="flex flex-col items-center gap-3 text-slate-400">
+                <UserCheck size={32} className="opacity-30" />
+                <p className="text-sm font-medium">Aucune demande en attente</p>
+                <p className="text-xs">Les inscriptions depuis le portail patient apparaîtront ici.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto soft-scrollbar">
+              <table className="w-full min-w-[640px] text-left">
+                <thead>
+                  <tr className="bg-amber-50 border-b border-amber-100">
+                    {['Patient', 'Inscrit le', 'Contact', 'CIN', 'Action'].map(h => (
+                      <th key={h} className="px-5 py-3.5 label-xs">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {pending.map(p => (
+                    <tr key={p.id} className="table-row-hover">
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center text-sm font-bold text-amber-700 shrink-0">
+                            {getInitials(p)}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{p.prenom} {p.nom}</p>
+                            <p className="text-xs text-slate-400">{p.age ? `${p.age} ans` : '—'} · {p.sexe === 'M' ? 'Masculin' : 'Féminin'}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-slate-600">
+                        {p.cree_le ? new Date(p.cree_le).toLocaleDateString('fr-FR') : '—'}
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-slate-600">
+                        <div className="flex flex-col">
+                          <span>{p.telephone || '—'}</span>
+                          <span className="text-xs text-slate-400">{p.email || '—'}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-slate-600">{p.cin || '—'}</td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleValider(p.id)}
+                            disabled={actionId === p.id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold transition-colors disabled:opacity-50"
+                          >
+                            <Check size={13} /> Valider
+                          </button>
+                          <button
+                            onClick={() => setConfirmRefuse({ id: p.id, name: `${p.prenom} ${p.nom}` })}
+                            disabled={actionId === p.id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold transition-colors disabled:opacity-50"
+                          >
+                            <X size={13} /> Refuser
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Main grid ── */}
+      {(!isStaff || tab === 'actifs') && (
       <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] items-start">
 
         {/* Table card */}
@@ -378,6 +529,7 @@ export default function PatientsPage() {
           )}
         </aside>
       </section>
+      )}
 
       {/* ── Side drawer: New patient ── */}
       {showDrawer && (
@@ -475,6 +627,17 @@ export default function PatientsPage() {
           message={`Le dossier de ${confirmDelete.name} sera définitivement supprimé. Cette action est irréversible.`}
           onConfirm={() => handleDelete(confirmDelete.id)}
           onClose={() => setConfirmDelete(null)}
+          variant="danger"
+        />
+      )}
+
+      {/* ── Confirm refuse inscription ── */}
+      {confirmRefuse && (
+        <ConfirmModal
+          title="Refuser cette inscription ?"
+          message={`La demande d'inscription de ${confirmRefuse.name} sera refusée et archivée. Le patient ne pourra pas prendre de rendez-vous.`}
+          onConfirm={() => { handleRefuser(confirmRefuse.id); setConfirmRefuse(null) }}
+          onClose={() => setConfirmRefuse(null)}
           variant="danger"
         />
       )}

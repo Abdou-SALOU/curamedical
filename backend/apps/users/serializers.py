@@ -18,17 +18,28 @@ class FlexTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    # Statut de validation du dossier patient lié (null pour le staff).
+    # Permet au frontend d'afficher la bannière « en attente de validation ».
+    patient_statut = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = (
             'id', 'username', 'email',
             'first_name', 'last_name',
-            'role', 'telephone', 'specialite', 'is_staff'
+            'role', 'telephone', 'specialite', 'is_staff',
+            'patient_statut',
         )
         read_only_fields = ('is_staff',)
         extra_kwargs = {
             'password': {'write_only': True}  # jamais exposé dans les réponses
         }
+
+    def get_patient_statut(self, obj):
+        if obj.role != 'patient':
+            return None
+        patient = getattr(obj, 'patient_profile', None)
+        return patient.statut_validation if patient else None
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
@@ -145,5 +156,7 @@ class PatientRegisterSerializer(serializers.ModelSerializer):
                 cin=cin or None,
                 telephone=user.telephone or '',
                 email=user.email or '',
+                # Auto-inscription : le dossier reste à valider par le secrétariat.
+                statut_validation='EN_ATTENTE',
             )
         return user

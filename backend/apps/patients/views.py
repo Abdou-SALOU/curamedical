@@ -36,14 +36,21 @@ class PatientViewSet(viewsets.ModelViewSet):
             return Patient.objects.filter(utilisateur=user)
         if user.role == 'medecin':
             from django.db import models
-            return Patient.objects.filter(
+            qs = Patient.objects.filter(
                 models.Q(rendez_vous__medecin=user) |
                 models.Q(consultations__medecin=user)
             ).distinct()
-        if user.role == 'secretaire':
-            return Patient.objects.all()
-        # Administrateur : aucun accès aux données médicales
-        return Patient.objects.none()
+        elif user.role == 'secretaire':
+            qs = Patient.objects.all()
+        else:
+            # Administrateur : aucun accès aux données médicales
+            return Patient.objects.none()
+
+        # La liste principale n'affiche pas les demandes en attente :
+        # elles sont gérées dans l'onglet dédié (action `en_attente`).
+        if self.action == 'list':
+            qs = qs.exclude(statut_validation='EN_ATTENTE')
+        return qs
 
     @action(detail=True, methods=['patch'], url_path='archiver')
     def archiver(self, request, pk=None):
@@ -98,6 +105,62 @@ class PatientViewSet(viewsets.ModelViewSet):
     @action(
         detail=False,
         methods=['get'],
+        url_path='en-attente',
+        permission_classes=[EstMedecinOuSecretaire]
+    )
+    def en_attente(self, request):
+        """Liste les inscriptions patients en attente de validation (secrétaire/médecin)."""
+        patients = Patient.objects.filter(
+            statut_validation='EN_ATTENTE',
+            est_archive=False,
+        ).order_by('-cree_le')
+        recherche = request.query_params.get('search', '').strip()
+        if recherche:
+            from django.db import models
+            patients = patients.filter(
+                models.Q(nom__icontains=recherche) |
+                models.Q(prenom__icontains=recherche) |
+                models.Q(cin__icontains=recherche)
+            )
+        page = self.paginate_queryset(patients)
+        if page is not None:
+            serializer = PatientSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        return Response(PatientSerializer(patients, many=True).data)
+
+    @action(
+        detail=True,
+        methods=['post', 'patch'],
+        url_path='valider',
+        permission_classes=[EstMedecinOuSecretaire]
+    )
+    def valider(self, request, pk=None):
+        """Valide une inscription patient en attente."""
+        patient = self.get_object()
+        if patient.statut_validation == 'VALIDE':
+            return Response({'detail': 'Ce patient est déjà validé.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        patient.statut_validation = 'VALIDE'
+        patient.save(update_fields=['statut_validation', 'modifie_le'])
+        return Response({'detail': f'Inscription de {patient.nom_complet} validée.'})
+
+    @action(
+        detail=True,
+        methods=['post', 'patch'],
+        url_path='refuser',
+        permission_classes=[EstMedecinOuSecretaire]
+    )
+    def refuser(self, request, pk=None):
+        """Refuse une inscription patient en attente (archive le dossier)."""
+        patient = self.get_object()
+        patient.statut_validation = 'REFUSE'
+        patient.est_archive = True
+        patient.save(update_fields=['statut_validation', 'est_archive', 'modifie_le'])
+        return Response({'detail': f'Inscription de {patient.nom_complet} refusée.'})
+
+    @action(
+        detail=False,
+        methods=['get'],
         url_path='mes-infos',
         permission_classes=[permissions.IsAuthenticated]
     )
@@ -125,6 +188,10 @@ class PatientViewSet(viewsets.ModelViewSet):
         return Response({
             'total': Patient.objects.filter(est_archive=False).count(),
             'archives': Patient.objects.filter(est_archive=True).count(),
+            'en_attente': Patient.objects.filter(
+                statut_validation='EN_ATTENTE',
+                est_archive=False,
+            ).count(),
             'nouveaux_ce_mois': Patient.objects.filter(
                 est_archive=False,
                 cree_le__month=maintenant.month,

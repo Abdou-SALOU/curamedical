@@ -388,6 +388,12 @@ class WhatsAppChatbot:
                 "Contactez la clinique pour finaliser :\n"
                 "📞 +212 5 22 00 00 00"
             )
+        if self.patient.statut_validation != 'VALIDE':
+            return (
+                "⏳ Votre inscription est *en attente de validation* par le secrétariat.\n"
+                "Vous pourrez prendre rendez-vous dès que votre dossier sera validé.\n"
+                "📞 +212 5 22 00 00 00"
+            )
         try:
             medecin = User.objects.filter(role='medecin', is_active=True).first()
             if not medecin:
