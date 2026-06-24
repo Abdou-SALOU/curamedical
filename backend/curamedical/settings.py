@@ -162,6 +162,11 @@ TWILIO_WHATSAPP_FROM = config('TWILIO_WHATSAPP_FROM', default='+14155238886')
 # En prod : URL publique du backend (ex: https://api.curamedical.com)
 # En dev avec ngrok : https://xxxx.ngrok.io
 PUBLIC_BASE_URL = config('PUBLIC_BASE_URL', default='')
+# URL PUBLIQUE DU FRONTEND (espace patient React) — distincte de PUBLIC_BASE_URL
+# qui pointe sur le backend. Sert aux liens « Accéder à mon espace patient »
+# dans les e-mails. En dev local : http://localhost:3000 ; pour un accès depuis
+# un téléphone, mettre l'IP LAN (ex: http://192.168.1.10:3000) ou l'URL déployée.
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
 # Activer la vérification de signature Twilio (mettre True en production)
 TWILIO_VALIDATE_SIGNATURE = config('TWILIO_VALIDATE_SIGNATURE', default=False, cast=bool)
 

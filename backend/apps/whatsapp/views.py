@@ -96,23 +96,46 @@ def _welcome() -> str:
 def _validate_signature(request):
     from twilio.request_validator import RequestValidator
     validator = RequestValidator(settings.TWILIO_AUTH_TOKEN)
-    url = request.build_absolute_uri()
+    # Derrière ngrok/reverse-proxy, build_absolute_uri() renvoie l'URL interne
+    # (http://backend:8000/...) alors que Twilio signe l'URL publique https.
+    # On reconstruit donc l'URL à partir de PUBLIC_BASE_URL quand il est défini.
+    base_url = getattr(settings, 'PUBLIC_BASE_URL', '').rstrip('/')
+    if base_url:
+        url = f"{base_url}{request.get_full_path()}"
+    else:
+        url = request.build_absolute_uri()
     sig = request.META.get('HTTP_X_TWILIO_SIGNATURE', '')
     if not validator.validate(url, request.POST, sig):
         raise PermissionError('Signature Twilio invalide')
 
 
 def _get_or_create_conversation(phone_number: str) -> WhatsAppConversation:
-    conversation, _ = WhatsAppConversation.objects.get_or_create(phone_number=phone_number)
+    # Numéro normalisé en E.164 des deux côtés (entrant ET fiches patients) pour
+    # une correspondance fiable — évite qu'un patient reçoive les documents d'un
+    # autre (voir apps.common.phone).
+    from apps.common.phone import normalize_phone
+    norm = normalize_phone(phone_number)
+    conversation, _ = WhatsAppConversation.objects.get_or_create(phone_number=norm)
     if not conversation.patient:
         try:
             from apps.patients.models import Patient
-            patient = Patient.objects.filter(telephone=phone_number).first()
-            if patient:
+            matches = list(Patient.objects.filter(telephone=norm, est_archive=False))
+            if matches:
+                # Le numéro est désormais unique ; on reste néanmoins robuste : si
+                # plusieurs dossiers partagent le numéro (données héritées), on
+                # privilégie celui rattaché à un compte utilisateur (le vrai
+                # titulaire), sinon le plus récemment créé.
+                patient = next((p for p in matches if p.utilisateur_id), None) \
+                    or max(matches, key=lambda p: p.cree_le)
+                if len(matches) > 1:
+                    logger.warning(
+                        "[WhatsApp] %d patients pour le numéro %s — dossier id=%s retenu.",
+                        len(matches), norm, patient.id,
+                    )
                 conversation.patient = patient
                 conversation.save(update_fields=['patient'])
         except Exception:
-            pass
+            logger.exception("[WhatsApp] Échec résolution patient pour %s", norm)
     return conversation
 
 

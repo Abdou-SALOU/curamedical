@@ -9,7 +9,8 @@ import { toast } from '../store/toastStore'
 import { SkeletonTable } from '../components/Skeleton'
 import ConfirmModal from '../components/ConfirmModal'
 import Pagination from '../components/Pagination'
-import { Calendar, CalendarDays, List, Plus, RotateCcw, Trash2, Video } from 'lucide-react'
+import { Calendar, CalendarDays, List, Plus, RotateCcw, Trash2, Video, Clock } from 'lucide-react'
+import useAuthStore from '../store/authStore'
 
 const PAGE_SIZE = 10
 
@@ -182,6 +183,10 @@ export default function AppointmentsPage() {
   const urlParams = new URLSearchParams(location.search)
   const initType = urlParams.get('type') || ''
 
+  const { user } = useAuthStore()
+  // Patient dont l'inscription n'est pas encore validée par le secrétariat.
+  const enAttenteValidation = user?.role === 'patient' && user?.patient_statut && user.patient_statut !== 'VALIDE'
+
   const [appointments, setAppointments] = useState([])
   const [count, setCount]         = useState(0)
   const [page, setPage]           = useState(1)
@@ -349,13 +354,32 @@ export default function AppointmentsPage() {
             <button onClick={() => { setShowTrash(true); fetchTrash() }} className="cm-btn cm-btn-ghost" title="Corbeille">
               <Trash2 size={15} /> Corbeille
             </button>
-            <button onClick={() => setShowForm(true)} className="cm-btn cm-btn-brand">
+            <button
+              onClick={() => setShowForm(true)}
+              disabled={enAttenteValidation}
+              title={enAttenteValidation ? 'Inscription en attente de validation' : undefined}
+              className="cm-btn cm-btn-brand disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <Plus size={16} />
               Nouveau RDV
             </button>
           </div>
         </div>
       </section>
+
+      {/* Bannière : inscription patient en attente de validation */}
+      {enAttenteValidation && (
+        <div className="cm-mb-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+          <Clock size={18} className="text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-800">
+            <p className="font-bold">Inscription en attente de validation</p>
+            <p className="mt-0.5 text-amber-700">
+              Votre dossier doit être validé par le secrétariat avant de pouvoir prendre rendez-vous.
+              Vous serez notifié dès qu'il sera activé.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="cm-card" style={{ padding: 0, overflow: 'hidden' }}>
