@@ -1,0 +1,70 @@
+{
+  "name": "RDV Terminé - Email + WhatsApp",
+  "nodes": [
+    {
+      "id": "b2c3d4e5-0002-0002-0002-000000000001",
+      "name": "Webhook RDV Terminé",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-300, 0],
+      "webhookId": "rdv-termine-curamedical",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rdv-termine",
+        "options": {}
+      }
+    },
+    {
+      "id": "b2c3d4e5-0002-0002-0002-000000000002",
+      "name": "Email RDV Terminé",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [0, -140],
+      "parameters": {
+        "fromEmail": "votre-email@gmail.com",
+        "toEmail": "={{ $json.body.patient_email }}",
+        "subject": "Votre consultation est terminée - CuraMedical",
+        "emailFormat": "html",
+        "html": "=<p>Bonjour <strong>{{ $json.body.patient_prenom }} {{ $json.body.patient_nom }}</strong>,</p><p>Votre consultation du <strong>{{ $json.body.date }}</strong> à <strong>{{ $json.body.heure }}</strong> avec <strong>{{ $json.body.medecin_nom }}</strong> est terminée.</p><p>Votre ordonnance est disponible sur votre espace patient CuraMedical.</p><p>Merci de votre confiance,<br><strong>CuraMedical</strong></p>",
+        "options": {}
+      },
+      "credentials": {
+        "smtp": {
+          "id": "SMTP_CREDENTIAL_ID",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "id": "b2c3d4e5-0002-0002-0002-000000000003",
+      "name": "WhatsApp RDV Terminé",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [0, 140],
+      "parameters": {
+        "to": "=whatsapp:{{ $json.body.patient_tel }}",
+        "from": "whatsapp:+14155238886",
+        "body": "=✅ Bonjour {{ $json.body.patient_prenom }} {{ $json.body.patient_nom }},\n\nVotre consultation du {{ $json.body.date }} à {{ $json.body.heure }} avec {{ $json.body.medecin_nom }} est terminée.\n\nVotre ordonnance est disponible sur votre espace patient.\n\n🏥 CuraMedical"
+      },
+      "credentials": {
+        "twilioApi": {
+          "id": "TWILIO_CREDENTIAL_ID",
+          "name": "Twilio account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook RDV Terminé": {
+      "main": [
+        [
+          { "node": "Email RDV Terminé", "type": "main", "index": 0 },
+          { "node": "WhatsApp RDV Terminé", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}

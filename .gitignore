@@ -1,6 +1,7 @@
 # Environnements virtuels Python
 venv-backend/
 venv-ai/
+venv/
 env/
 .env
 *.env
@@ -19,10 +20,12 @@ build/
 *.log
 local_settings.py
 db.sqlite3
+database.sqlite
 media/
 
 # Modèle IA (trop lourd pour Git)
 ia-service/model/
+ia-service/venv/
 
 # Node.js / React
 node_modules/
@@ -39,11 +42,34 @@ frontend/.env
 *.swo
 .DS_Store
 Thumbs.db
-# Fichiers ignores ajoutes automatiquement
+
+# Fichiers de données volumineuses
 Final_Augmented_dataset_Diseases_and_Symptoms.csv
 ia-service/Fast_Dataset.csv
 ia-service/Final_Augmented_dataset_Diseases_and_Symptoms.csv
-database.sqlite
+
+# n8n
 .n8n/
+
+# Outils locaux (PlantUML, etc. — trop lourd pour Git)
+.tools/
+
+# Logs et fichiers temporaires
 ia_logs.txt
 tmp_ia_logs.txt
+train.log
+lint.json
+lint_output.txt
+
+# Scripts de debug/maintenance (ne pas committer en prod)
+patch_n8n.py
+fix_admin.py
+reset_passwords.py
+seed_users.py
+
+# Secrets OAuth (Google client secret n8n) — NE JAMAIS publier
+client_secret_*.json
+*.apps.googleusercontent.com.json
+
+# Configuration locale de l'agent (Claude Code)
+.claude/

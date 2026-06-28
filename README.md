@@ -1,11 +1,11 @@
-# 🏥 MedPredict — Gestion Intelligente de Cabinet Médical
+# 🏥 CuraMedical — Gestion Intelligente de Cabinet Médical
 
 Application de gestion de cabinet médical avec module d'assistance 
 au diagnostic par intelligence artificielle.
 
 ## 🏗️ Architecture
 ```
-medpredict/
+curamedical/
 ├── backend/       → Django + DRF (API REST)
 ├── frontend/      → React + Vite (Interface utilisateur)
 ├── ia-service/    → Flask + Scikit-learn (Microservice IA)
@@ -23,8 +23,8 @@ medpredict/
 
 ### 1. Cloner le projet
 ```bash
-git clone https://github.com/VOTRE_USERNAME/medpredict.git
-cd medpredict
+git clone https://github.com/VOTRE_USERNAME/curamedical.git
+cd curamedical
 ```
 
 ### 2. Configurer les variables d'environnement
@@ -51,7 +51,7 @@ docker-compose up --build
 ### 5. Initialiser la base de données
 ```bash
 docker-compose exec backend python manage.py migrate
-docker-compose exec backend python manage.py createsuperuser
+docker-compose exec backend python manage.py init_accounts
 ```
 
 ## 🌐 Accès aux services
@@ -63,13 +63,12 @@ docker-compose exec backend python manage.py createsuperuser
 | Admin Django | http://localhost:8000/admin |
 | Microservice IA | http://localhost:5000 |
 
-## 👥 Profils utilisateurs
-
-| Rôle | Accès |
-|---|---|
-| Médecin | Consultations, ordonnances, IA |
-| Secrétaire | Patients, rendez-vous |
-| Administrateur | Configuration complète |
+| Rôle | Login / Pass | Accès |
+|---|---|---|
+| Administrateur | admin / adminpassword | Configuration, Utilisateurs, Audit |
+| Médecin | medecin / medecinpassword | Consultations, Ordonnances, IA |
+| Secrétaire | secretaire / secretairepassword | Patients, RDV, Planning |
+| Patient | (via inscription) | Espace personnel, RDV, Ordonnances |
 
 ## 🧪 Backend — Environnement local
 ```bash

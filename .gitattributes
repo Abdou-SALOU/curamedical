@@ -1,0 +1,25 @@
+# Normalisation des fins de ligne — évite que les scripts exécutés dans les
+# conteneurs Linux (Docker) soient convertis en CRLF lors d'un clone Windows,
+# ce qui casserait le shebang (#!/bin/sh^M : "no such file or directory").
+
+# Par défaut : Git gère automatiquement les fins de ligne des fichiers texte
+* text=auto
+
+# Fichiers qui DOIVENT rester en LF (exécutés dans des conteneurs Linux)
+*.sh            text eol=lf
+entrypoint.sh   text eol=lf
+dockerfile      text eol=lf
+Dockerfile      text eol=lf
+*.dockerfile    text eol=lf
+Makefile        text eol=lf
+*.py            text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+
+# Fichiers binaires — jamais de conversion
+*.png           binary
+*.jpg           binary
+*.pdf           binary
+*.csv           binary
+*.sqlite        binary
+*.joblib        binary

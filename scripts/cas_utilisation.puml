@@ -1,0 +1,103 @@
+@startuml cas_utilisation
+' Diagramme de cas d'utilisation — CuraMedical
+left to right direction
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+skinparam packageStyle rectangle
+skinparam ArrowColor #444444
+skinparam actor {
+  BorderColor #2b2b2b
+  BackgroundColor #FFFFFF
+}
+skinparam usecase {
+  BorderColor #2b2b2b
+  BackgroundColor #FCFCFC
+  FontSize 13
+}
+skinparam note {
+  BackgroundColor #E9F7EF
+  BorderColor #1f9d55
+}
+
+' ── Acteurs ──────────────────────────────────────────────
+actor "Utilisateur"   as user
+actor "Médecin"        as med
+actor "Secrétaire"     as sec
+actor "Administrateur" as admin
+actor "Patient"        as pat
+
+med   --|> user
+sec   --|> user
+admin --|> user
+pat   --|> user
+
+' ── Système ──────────────────────────────────────────────
+rectangle "CuraMedical" {
+
+  ' Commun
+  usecase "S'authentifier" as UC_auth
+
+  ' Médecin
+  usecase "Réaliser une consultation\n(présentiel / téléconsultation)" as UC_consult
+  usecase "Solliciter l'IA\n(aide au diagnostic)" as UC_ia
+  usecase "Rédiger une ordonnance" as UC_ord
+  usecase "Rédiger un compte-rendu" as UC_cr
+  usecase "Générer un PDF" as UC_pdf
+
+  ' Secrétaire
+  usecase "Gérer les dossiers patients" as UC_pat
+  usecase "Gérer les rendez-vous" as UC_rdv
+
+  ' Administrateur
+  usecase "Configurer le système" as UC_config
+  usecase "Gérer les utilisateurs" as UC_users
+  usecase "Consulter le journal d'audit" as UC_audit
+
+  ' Patient
+  usecase "S'inscrire" as UC_inscr
+  usecase "Prendre un rendez-vous" as UC_prendre
+  usecase "Consulter ses rendez-vous" as UC_voir
+  usecase "Modifier / annuler un rendez-vous" as UC_modif
+  usecase "Recevoir son ordonnance (PDF)" as UC_rxpdf
+  usecase "Recevoir son compte-rendu (PDF)" as UC_crpdf
+  usecase "Analyser ses symptômes (IA)" as UC_sympt
+  usecase "Participer à une téléconsultation" as UC_tele
+}
+
+' ── Associations ─────────────────────────────────────────
+user  --> UC_auth
+
+med   --> UC_consult
+med   --> UC_ord
+med   --> UC_cr
+med   --> UC_tele
+
+sec   --> UC_pat
+sec   --> UC_rdv
+
+admin --> UC_config
+admin --> UC_users
+admin --> UC_audit
+
+pat   --> UC_inscr
+pat   --> UC_prendre
+pat   --> UC_voir
+pat   --> UC_modif
+pat   --> UC_rxpdf
+pat   --> UC_crpdf
+pat   --> UC_sympt
+pat   --> UC_tele
+
+' ── Relations entre cas ──────────────────────────────────
+UC_consult ..> UC_ia  : <<extend>>
+UC_ord     ..> UC_pdf : <<extend>>
+UC_cr      ..> UC_pdf : <<extend>>
+
+' ── Canal d'accès du patient (WhatsApp n'est PAS un acteur) ──
+note bottom of pat
+  Le **Patient** accède au système
+  indifféremment via l'__application Web__
+  **ou** via __WhatsApp__ (chatbot Twilio + IA).
+end note
+
+@enduml

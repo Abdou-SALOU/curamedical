@@ -1,91 +1,187 @@
-
 services:
-
-  # Base de données PostgreSQL
   db:
     image: postgres:15
-    container_name: medpredict_db
+    container_name: curamedical_db
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-medpredict_db}
+      POSTGRES_USER: ${POSTGRES_USER:-medpredict_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-medpredict_pass}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-medpredict_user} -d ${POSTGRES_DB:-medpredict_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
     networks:
-      - medpredict_network
+      - curamedical_network
 
-  # Backend Django
+  redis:
+    image: redis:7-alpine
+    container_name: curamedical_redis
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - curamedical_network
+
   backend:
-    build: ./backend
-    container_name: medpredict_backend
-    command: python manage.py runserver 0.0.0.0:8000
+    build:
+      context: ./backend
+      dockerfile: dockerfile
+    container_name: curamedical_backend
+    command: gunicorn curamedical.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120
     volumes:
       - ./backend:/app
     ports:
       - "8000:8000"
-    environment:
-      - DEBUG=${DEBUG}
+    environment: &backend_env
+      - DEBUG=${DEBUG:-True}
       - SECRET_KEY=${SECRET_KEY}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-medpredict_db}
+      - POSTGRES_USER=${POSTGRES_USER:-medpredict_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-medpredict_pass}
       - POSTGRES_HOST=db
-      - IA_SERVICE_URL=http://ia-service:5000
-      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL}
+      - IA_SERVICE_URL=http://curamedical_ia:5000
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,backend,host.docker.internal}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      - N8N_WEBHOOK_URL=http://curamedical_n8n:5678/webhook/prescriptions
+      - N8N_HOST_INTERNAL=curamedical_n8n
+      - EMAIL_BACKEND=${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
+      - EMAIL_HOST=${EMAIL_HOST:-smtp.gmail.com}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_USE_TLS=${EMAIL_USE_TLS:-True}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER:-}
+      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD:-}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-CuraMedical <noreply@curamedical.com>}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_WHATSAPP_FROM=${TWILIO_WHATSAPP_FROM:-+14155238886}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - TWILIO_VALIDATE_SIGNATURE=${TWILIO_VALIDATE_SIGNATURE:-False}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
     networks:
-      - medpredict_network
+      - curamedical_network
 
-  # Frontend React
+  # Worker Celery : exécute les notifications (email, WhatsApp, PDF, n8n)
+  # hors du cycle requête/réponse. Partage l'image et l'environnement du backend.
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: dockerfile
+    container_name: curamedical_celery
+    # entrypoint surchargé → pas de migrate/seed (déjà fait par le backend)
+    entrypoint: ["celery", "-A", "curamedical", "worker", "--loglevel=info", "--concurrency=4"]
+    volumes:
+      - ./backend:/app
+    environment: *backend_env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    networks:
+      - curamedical_network
+
   frontend:
-    build: ./frontend
-    container_name: medpredict_frontend
+    build:
+      context: ./frontend
+      dockerfile: dockerfile
+    container_name: curamedical_frontend
     volumes:
       - ./frontend:/app
-      - /app/node_modules
+      - frontend_node_modules:/app/node_modules
     ports:
       - "3000:3000"
     environment:
       - VITE_API_URL=http://localhost:8000
     depends_on:
       - backend
+    restart: unless-stopped
     networks:
-      - medpredict_network
+      - curamedical_network
 
-  # Microservice IA Flask
   ia-service:
-    build: ./ia-service
-    container_name: medpredict_ia
-    volumes:
-      - ./ia-service:/app
+    build:
+      context: ./ia-service
+      dockerfile: dockerfile
+    container_name: curamedical_ia
     ports:
       - "5000:5000"
     environment:
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}
+    restart: unless-stopped
     networks:
-      - medpredict_network
+      - curamedical_network
 
-  # n8n - Automatisation de Workflow
+  # Tunnel public ngrok : expose le backend sur une URL HTTPS fixe pour que
+  # Twilio (webhook WhatsApp) et les liens PDF soient accessibles depuis
+  # Internet. Démarre automatiquement avec la stack — plus besoin de lancer
+  # ngrok à la main. Plan gratuit = 1 seule session : ne pas lancer ngrok
+  # ailleurs en parallèle.
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: curamedical_ngrok
+    command:
+      - "http"
+      - "backend:8000"
+      - "--url=https://${NGROK_DOMAIN:-flint-donated-tall.ngrok-free.dev}"
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    ports:
+      - "4040:4040"   # interface d'inspection ngrok (http://localhost:4040)
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - curamedical_network
+
   n8n:
     image: n8nio/n8n:latest
-    container_name: medpredict_n8n
+    container_name: curamedical_n8n
     ports:
       - "5678:5678"
     environment:
+      - N8N_HOST=localhost
       - N8N_PORT=5678
+      - N8N_PROTOCOL=http
       - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=Africa/Casablanca
+      - NODE_FUNCTION_ALLOW_EXTERNAL=*
     volumes:
-      - ./.n8n:/home/node/.n8n
+      - n8n_data:/home/node/.n8n
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
     networks:
-      - medpredict_network
+      - curamedical_network
 
 volumes:
   postgres_data:
+  frontend_node_modules:
+  n8n_data:
 
 networks:
-  medpredict_network:
+  curamedical_network:
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "true"

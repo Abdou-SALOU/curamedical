@@ -1,10 +1,10 @@
 {
-  "name": "MedPredict - Automation Workflow (Corrected)",
+  "name": "CuraMedical - Automation Workflow (Corrected)",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "medpredict-webhook",
+        "path": "curamedical-webhook",
         "options": {}
       },
       "id": "423138dc-6e9b-4cb6-acae-900590075346",
@@ -86,6 +86,28 @@
                 ],
                 "combinator": "and"
               }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "new-patient-condition",
+                    "leftValue": "={{ $json.body.event }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "new_patient"
+                  }
+                ],
+                "combinator": "and"
+              }
             }
           ]
         },
@@ -120,12 +142,12 @@
     },
     {
       "parameters": {
-        "fromEmail": "votre-email@gmail.com",
+        "fromEmail": "curamedical.ma@gmail.com",
         "toEmail": "={{ $('Webhook').item.json.body.email }}",
-        "subject": "=MedPredict : {{ $('Webhook').item.json.body.event === 'appointment_confirmed' ? 'Confirmation de rendez-vous' : ($('Webhook').item.json.body.event === 'new_prescription' ? 'Votre ordonnance' : 'Votre compte-rendu médical') }}",
+        "subject": "=CuraMedical : {{ $('Webhook').item.json.body.event === 'appointment_confirmed' ? 'Confirmation de rendez-vous' : ($('Webhook').item.json.body.event === 'new_prescription' ? 'Votre ordonnance' : ($('Webhook').item.json.body.event === 'new_patient' ? 'Bienvenue sur CuraMedical' : 'Votre compte-rendu médical')) }}",
         "text": "={{ $('Webhook').item.json.body.details }}",
         "options": {
-          "attachments": "={{ $('Webhook').item.json.body.event === 'appointment_confirmed' ? '' : 'attachment' }}"
+          "attachments": "={{ ['appointment_confirmed', 'new_patient'].includes($('Webhook').item.json.body.event) ? '' : 'attachment' }}"
         }
       },
       "id": "1c493a96-faab-4511-b62a-99d197446878",
@@ -169,6 +191,13 @@
         [
           {
             "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Email",
             "type": "main",
             "index": 0
           }
