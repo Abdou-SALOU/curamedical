@@ -68,6 +68,31 @@ def extract_name(text):
 
 
 # ─────────────────────────────────────────────────────────────
+# Contrôle d'accès — confidentialité des données médicales
+# ─────────────────────────────────────────────────────────────
+
+# Intentions réservées EXCLUSIVEMENT au personnel médical (médecin/secrétaire).
+# Un patient ne doit jamais les déclencher : ni via un handler, ni via la
+# réponse libre du LLM (qui sinon divulgue le nombre de patients, etc.).
+STAFF_ONLY_INTENTS = {
+    'create_patient', 'create_appointment', 'patient_search', 'patient_list', 'stats',
+}
+
+
+def _scope_to_patient(qs, user):
+    """Restreint un queryset (doté d'un champ `patient`) au dossier du patient connecté.
+
+    Fail-closed : si l'utilisateur est un patient SANS dossier patient lié,
+    on ne retourne rien plutôt que l'ensemble des données du cabinet.
+    Pour le personnel médical, le queryset est laissé inchangé.
+    """
+    if getattr(user, 'role', None) != 'patient':
+        return qs
+    profile = getattr(user, 'patient_profile', None)
+    return qs.filter(patient=profile) if profile else qs.none()
+
+
+# ─────────────────────────────────────────────────────────────
 # Intent handlers
 # ─────────────────────────────────────────────────────────────
 
@@ -394,9 +419,7 @@ def handle_appointments_upcoming(user, message):
         today_kw = ['aujourd\'hui', "aujourd'hui", 'aujourdhui', 'today', 'ce jour', 'du jour']
         if match_any(message, today_kw):
             today = timezone.now().date()
-            qs = base_qs.filter(date_heure__date=today)
-            if user.role == 'patient' and hasattr(user, 'patient_profile'):
-                qs = qs.filter(patient=user.patient_profile)
+            qs = _scope_to_patient(base_qs.filter(date_heure__date=today), user)
             appts = qs.order_by('date_heure')[:10]
             if not appts.exists():
                 return "📅 **Aucun rendez-vous prévu aujourd'hui.** Profitez-en pour mettre à jour vos dossiers ! 😊"
@@ -414,9 +437,7 @@ def handle_appointments_upcoming(user, message):
         demain_kw = ['demain', 'tomorrow']
         if match_any(message, demain_kw):
             tomorrow = timezone.now().date() + timedelta(days=1)
-            qs = base_qs.filter(date_heure__date=tomorrow)
-            if user.role == 'patient' and hasattr(user, 'patient_profile'):
-                qs = qs.filter(patient=user.patient_profile)
+            qs = _scope_to_patient(base_qs.filter(date_heure__date=tomorrow), user)
             appts = qs.order_by('date_heure')[:10]
             if not appts.exists():
                 return f"📅 **Aucun rendez-vous prévu pour demain** ({tomorrow.strftime('%d/%m/%Y')})."
@@ -433,9 +454,7 @@ def handle_appointments_upcoming(user, message):
         if match_any(message, semaine_kw):
             start = timezone.now().date()
             end = start + timedelta(days=7)
-            qs = base_qs.filter(date_heure__date__range=[start, end])
-            if user.role == 'patient' and hasattr(user, 'patient_profile'):
-                qs = qs.filter(patient=user.patient_profile)
+            qs = _scope_to_patient(base_qs.filter(date_heure__date__range=[start, end]), user)
             appts = qs.order_by('date_heure')[:15]
             if not appts.exists():
                 return "📅 **Aucun rendez-vous prévu cette semaine.**"
@@ -447,9 +466,7 @@ def handle_appointments_upcoming(user, message):
             return '\n'.join(lines)
 
         # Prochains par défaut
-        qs = base_qs.filter(statut__in=['PLANIFIE','CONFIRME','EN_COURS'])
-        if user.role == 'patient' and hasattr(user, 'patient_profile'):
-            qs = qs.filter(patient=user.patient_profile)
+        qs = _scope_to_patient(base_qs.filter(statut__in=['PLANIFIE','CONFIRME','EN_COURS']), user)
         appts = qs.order_by('date_heure')[:8]
 
         if not appts.exists():
@@ -480,9 +497,7 @@ def handle_consultation_info(user, message):
         # Dernières consultations
         dernier_kw = ['derniere', 'dernieres', 'derniers', 'recente', 'recentes', 'recent', 'historique']
         if match_any(message, dernier_kw) or match(message, ['liste', 'lister', 'combien', 'nombre', 'total'], consult_kw):
-            qs = Consultation.objects.filter(est_supprime=False)
-            if user.role == 'patient' and hasattr(user, 'patient_profile'):
-                qs = qs.filter(patient=user.patient_profile)
+            qs = _scope_to_patient(Consultation.objects.filter(est_supprime=False), user)
 
             total = qs.count()
             ia_count = qs.filter(ia_utilisee=True).count()
@@ -524,9 +539,7 @@ def handle_prescription_info(user, message):
     if match_any(message, rx_kw):
         from apps.prescriptions.models import Prescription
 
-        qs = Prescription.objects.filter(est_supprime=False)
-        if user.role == 'patient' and hasattr(user, 'patient_profile'):
-            qs = qs.filter(patient=user.patient_profile)
+        qs = _scope_to_patient(Prescription.objects.filter(est_supprime=False), user)
 
         total = qs.count()
         recent = qs.select_related('patient').prefetch_related('lignes').order_by('-cree_le')[:5]
@@ -1206,16 +1219,31 @@ def chat_view(request):
     from apps.patients.models import Patient
     from apps.appointments.models import RendezVous as Appointment
     
-    # Préparation du contexte pour rendre l'IA plus "intelligente"
+    # Audience transmise au LLM : un patient reçoit la persona "patient"
+    # (jamais celle du personnel médical, qui propose d'ouvrir des dossiers).
+    audience = 'patient' if user.role == 'patient' else 'staff'
+
+    # Préparation du contexte pour rendre l'IA plus "intelligente".
+    # Confidentialité : seul le personnel médical (médecin/secrétaire) reçoit
+    # les agrégats du cabinet. Patients et admin n'y ont pas accès, sinon le
+    # LLM divulgue le nombre de patients et propose leurs dossiers.
     brain_data = {}
     try:
-        patient_count = Patient.objects.filter(est_archive=False).count()
-        today_appts = Appointment.objects.filter(date_heure__date=timezone.now().date()).count()
-        clinic_context = f"Le cabinet a actuellement {patient_count} patients actifs. Il y a {today_appts} rendez-vous prévus pour aujourd'hui."
+        if user.role in ('medecin', 'secretaire'):
+            patient_count = Patient.objects.filter(est_archive=False).count()
+            today_appts = Appointment.objects.filter(date_heure__date=timezone.now().date()).count()
+            clinic_context = f"Le cabinet a actuellement {patient_count} patients actifs. Il y a {today_appts} rendez-vous prévus pour aujourd'hui."
+        else:
+            clinic_context = (
+                "L'utilisateur n'a pas accès aux données globales du cabinet, "
+                "ni à la liste des patients, ni aux dossiers d'autres patients. "
+                "Ne révèle jamais d'informations concernant d'autres patients."
+            )
 
         r = requests.post(f"{settings.IA_SERVICE_URL}/brain", json={
             'message': message,
-            'context': clinic_context
+            'context': clinic_context,
+            'audience': audience,
         }, timeout=8)
         brain_data = r.json()
         intent = brain_data.get('intent')
@@ -1242,6 +1270,21 @@ def chat_view(request):
                 "exclusivement au **personnel médical** (médecins et secrétaires).\n\n"
                 "En tant qu'administrateur, vous pouvez gérer les **comptes utilisateurs** "
                 "et la **configuration système** depuis le panneau d'administration."
+            )
+        })
+
+    # Bloquer le patient sur les actions réservées au personnel médical.
+    # Indispensable : sans ce garde, un handler renvoie None (rôle refusé)
+    # mais la réponse libre du LLM (ai_response) était quand même retournée,
+    # divulguant le nombre de patients et proposant leurs dossiers.
+    if user.role == 'patient' and intent in STAFF_ONLY_INTENTS:
+        return Response({
+            'response': (
+                "🔒 **Accès restreint**\n\n"
+                "En tant que patient, vous pouvez uniquement consulter **vos propres** "
+                "rendez-vous, consultations et ordonnances — jamais les données "
+                "d'autres patients ni les statistiques du cabinet.\n\n"
+                "💡 Je peux toutefois **analyser vos symptômes** si vous le souhaitez. 😊"
             )
         })
 
@@ -1272,9 +1315,10 @@ def chat_view(request):
 
     # 4. ── Exécution du handler avec réponse augmentée par l'IA ──
     
-    # Interception spéciale : demande d'analyse de rendez-vous
+    # Interception spéciale : demande d'analyse de rendez-vous.
+    # Réservée au personnel médical — analyse le dossier d'un patient par son nom.
     normalized_msg = normalize(message)
-    if 'examine' in normalized_msg and 'motif' in normalized_msg and extracted_name:
+    if user.role in ('medecin', 'secretaire') and 'examine' in normalized_msg and 'motif' in normalized_msg and extracted_name:
         result = handle_analyze_appointment(user, extracted_name, ai_response)
         if result:
             return Response({'response': result})

@@ -843,7 +843,7 @@
 											"top": 63,
 											"width": 631,
 											"height": 13,
-											"text": "MedPredict"
+											"text": "CuraMedical"
 										},
 										{
 											"_type": "LabelView",
@@ -985,7 +985,7 @@
 											"top": -440,
 											"width": 104.01904296875,
 											"height": 13,
-											"text": "(from MedPredict)"
+											"text": "(from CuraMedical)"
 										},
 										{
 											"_type": "LabelView",
@@ -1198,7 +1198,7 @@
 											"top": -416,
 											"width": 104.01904296875,
 											"height": 13,
-											"text": "(from MedPredict)"
+											"text": "(from CuraMedical)"
 										},
 										{
 											"_type": "LabelView",
@@ -1411,7 +1411,7 @@
 											"top": 184,
 											"width": 104.01904296875,
 											"height": 13,
-											"text": "(from MedPredict)"
+											"text": "(from CuraMedical)"
 										},
 										{
 											"_type": "LabelView",
@@ -1624,7 +1624,7 @@
 											"top": -304,
 											"width": 104.01904296875,
 											"height": 13,
-											"text": "(from MedPredict)"
+											"text": "(from CuraMedical)"
 										},
 										{
 											"_type": "LabelView",
@@ -1837,7 +1837,7 @@
 											"top": -240,
 											"width": 104.01904296875,
 											"height": 13,
-											"text": "(from MedPredict)"
+											"text": "(from CuraMedical)"
 										},
 										{
 											"_type": "LabelView",
@@ -2545,7 +2545,7 @@
 											"top": 16,
 											"width": 104.01904296875,
 											"height": 13,
-											"text": "(from MedPredict)"
+											"text": "(from CuraMedical)"
 										},
 										{
 											"_type": "LabelView",
@@ -4289,7 +4289,7 @@
 					"_parent": {
 						"$ref": "AAAAAAGcsEaM52HoaWQ="
 					},
-					"name": "MedPredict",
+					"name": "CuraMedical",
 					"ownedElements": [
 						{
 							"_type": "UMLUseCase",

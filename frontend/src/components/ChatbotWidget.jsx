@@ -1,17 +1,29 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import api from '../api/axios'
 import useThemeStore from '../store/themeStore'
+import useAuthStore from '../store/authStore'
 
-const SUGGESTIONS = [
-  { label: '🩺 Analyser symptômes', text: 'Analyser mes symptômes' },
+// Suggestions réservées au personnel médical (médecin/secrétaire).
+const STAFF_SUGGESTIONS = [
+  { label: '🩺 Analyser symptômes', text: 'Analyser des symptômes' },
   { label: '👤 Nouveau Patient',    text: 'Ajouter un nouveau patient' },
   { label: '📅 Prochains RDV',     text: 'Planning de demain' },
   { label: '📊 Statistiques',      text: 'Statistiques du cabinet' },
 ]
 
+// Suggestions pour le patient : uniquement ses propres données.
+const PATIENT_SUGGESTIONS = [
+  { label: '🩺 Analyser symptômes', text: 'Analyser mes symptômes' },
+  { label: '📅 Mes prochains RDV',  text: 'Mes prochains rendez-vous' },
+  { label: '💊 Mes ordonnances',    text: 'Mes ordonnances' },
+  { label: '📋 Mes consultations',  text: 'Mes dernières consultations' },
+]
+
 export default function ChatbotWidget() {
   const { resolvedTheme } = useThemeStore()
   const dark = resolvedTheme === 'dark'
+  const { user } = useAuthStore()
+  const SUGGESTIONS = user?.role === 'patient' ? PATIENT_SUGGESTIONS : STAFF_SUGGESTIONS
 
   const [open, setOpen]       = useState(false)
   const [messages, setMessages] = useState([{

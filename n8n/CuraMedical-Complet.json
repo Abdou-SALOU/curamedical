@@ -1,0 +1,340 @@
+{
+  "name": "CuraMedical - Automatisation Complète",
+  "nodes": [
+    {
+      "id": "node-sched-01",
+      "name": "Déclencheur 8h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [-600, -400],
+      "parameters": {
+        "rule": {
+          "interval": [{ "triggerAtHour": 8 }]
+        }
+      }
+    },
+    {
+      "id": "node-token-01",
+      "name": "Obtenir Token JWT",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [-350, -400],
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/api/token/",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "username", "value": "admin" },
+            { "name": "password", "value": "admin" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-rdvlist-01",
+      "name": "RDV de demain",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [-100, -400],
+      "parameters": {
+        "url": "http://backend:8000/api/appointments/",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "date_min", "value": "={{ $now.plus({days:1}).toISODate() }}" },
+            { "name": "date_max", "value": "={{ $now.plus({days:1}).toISODate() }}" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $json.access }}" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-split-01",
+      "name": "Split RDV",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [150, -400],
+      "parameters": {
+        "fieldToSplitOut": "results",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-mail-rappel",
+      "name": "Email Rappel 24h",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [400, -500],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.patient_email }}",
+        "subject": "Rappel de votre rendez-vous demain - CuraMedical",
+        "message": "=<p>Bonjour <strong>{{ $json.patient_nom }}</strong>,</p><p>Nous vous rappelons votre rendez-vous de <strong>demain</strong> à <strong>{{ $json.date_heure.split('T')[1].substring(0,5) }}</strong> avec <strong>{{ $json.medecin_nom }}</strong>.</p><p>Motif : {{ $json.motif || 'Consultation' }}</p><p>Merci de votre confiance,<br><strong>CuraMedical</strong></p>",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": { "id": "GMAIL_OAUTH2_ID", "name": "Gmail account" }
+      }
+    },
+    {
+      "id": "node-wa-rappel",
+      "name": "WhatsApp Rappel 24h",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [400, -300],
+      "parameters": {
+        "to": "=whatsapp:{{ $json.patient_tel }}",
+        "from": "whatsapp:+14155238886",
+        "body": "=⏰ Rappel CuraMedical\n\nBonjour {{ $json.patient_nom }},\n\nVous avez un rendez-vous DEMAIN à {{ $json.date_heure.split('T')[1].substring(0,5) }} avec {{ $json.medecin_nom }}.\n\nMotif : {{ $json.motif || 'Consultation' }}\n\nÀ demain ! 🏥"
+      },
+      "credentials": {
+        "twilioApi": { "id": "TWILIO_CREDENTIAL_ID", "name": "Twilio account" }
+      }
+    },
+    {
+      "id": "node-wh-rdv",
+      "name": "Webhook RDV Terminé",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-600, 0],
+      "webhookId": "rdv-termine-curamedical",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rdv-termine",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-mail-rdv",
+      "name": "Email RDV Terminé",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [-300, -100],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.body.patient_email }}",
+        "subject": "Votre consultation est terminée - CuraMedical",
+        "message": "=<p>Bonjour <strong>{{ $json.body.patient_prenom }} {{ $json.body.patient_nom }}</strong>,</p><p>Votre consultation du <strong>{{ $json.body.date }}</strong> à <strong>{{ $json.body.heure }}</strong> avec <strong>{{ $json.body.medecin_nom }}</strong> est terminée.</p><p>Votre ordonnance est disponible sur votre espace patient CuraMedical.</p><p>Merci de votre confiance,<br><strong>CuraMedical</strong></p>",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": { "id": "GMAIL_OAUTH2_ID", "name": "Gmail account" }
+      }
+    },
+    {
+      "id": "node-wa-rdv",
+      "name": "WhatsApp RDV Terminé",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [-300, 100],
+      "parameters": {
+        "to": "=whatsapp:{{ $json.body.patient_tel }}",
+        "from": "whatsapp:+14155238886",
+        "body": "=✅ Bonjour {{ $json.body.patient_prenom }} {{ $json.body.patient_nom }},\n\nVotre consultation du {{ $json.body.date }} à {{ $json.body.heure }} avec {{ $json.body.medecin_nom }} est terminée.\n\nVotre ordonnance est disponible sur votre espace patient.\n\n🏥 CuraMedical"
+      },
+      "credentials": {
+        "twilioApi": { "id": "TWILIO_CREDENTIAL_ID", "name": "Twilio account" }
+      }
+    },
+    {
+      "id": "node-wh-notif",
+      "name": "Webhook Notifications",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-600, 400],
+      "webhookId": "prescriptions-curamedical",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "prescriptions",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-switch-01",
+      "name": "Switch Événement",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [-350, 400],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 3 },
+                "conditions": [
+                  {
+                    "id": "cond-consultation",
+                    "leftValue": "={{ $json.body.event }}",
+                    "operator": { "type": "string", "operation": "equals" },
+                    "rightValue": "new_consultation_report"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 3 },
+                "conditions": [
+                  {
+                    "id": "cond-patient",
+                    "leftValue": "={{ $json.body.event }}",
+                    "operator": { "type": "string", "operation": "equals" },
+                    "rightValue": "new_patient"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-pdf-01",
+      "name": "Convertir PDF",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [-100, 300],
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "body.file",
+        "binaryPropertyName": "attachment",
+        "options": {
+          "fileName": "={{ $('Webhook Notifications').item.json.body.filename || 'compte_rendu.pdf' }}"
+        }
+      }
+    },
+    {
+      "id": "node-mail-cr",
+      "name": "Email Compte-Rendu",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [200, 200],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Webhook Notifications').item.json.body.email }}",
+        "subject": "Votre compte-rendu médical - CuraMedical",
+        "message": "=<p>Bonjour <strong>{{ $('Webhook Notifications').item.json.body.patient }}</strong>,</p><p>{{ $('Webhook Notifications').item.json.body.details }}</p><p>Veuillez trouver ci-joint votre compte-rendu établi par <strong>{{ $('Webhook Notifications').item.json.body.doctor }}</strong> le {{ $('Webhook Notifications').item.json.body.date }}.</p><p>Merci de votre confiance,<br><strong>CuraMedical</strong></p>",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [{ "property": "attachment" }]
+          }
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": { "id": "GMAIL_OAUTH2_ID", "name": "Gmail account" }
+      }
+    },
+    {
+      "id": "node-wa-cr",
+      "name": "WhatsApp Compte-Rendu",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [200, 400],
+      "parameters": {
+        "to": "=whatsapp:{{ $('Webhook Notifications').item.json.body.patient_tel }}",
+        "from": "whatsapp:+14155238886",
+        "body": "=📋 Bonjour {{ $('Webhook Notifications').item.json.body.patient }},\n\nVotre compte-rendu médical établi par {{ $('Webhook Notifications').item.json.body.doctor }} le {{ $('Webhook Notifications').item.json.body.date }} est disponible.\n\nConsultez votre espace patient ou votre email.\n\n🏥 CuraMedical"
+      },
+      "credentials": {
+        "twilioApi": { "id": "TWILIO_CREDENTIAL_ID", "name": "Twilio account" }
+      }
+    },
+    {
+      "id": "node-mail-patient",
+      "name": "Email Bienvenue Patient",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [-100, 550],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.body.email }}",
+        "subject": "Bienvenue sur CuraMedical !",
+        "message": "=<p>Bonjour <strong>{{ $json.body.patient }}</strong>,</p><p>{{ $json.body.details }}</p><p>Votre dossier a été créé le {{ $json.body.date }}. Vous pouvez accéder à votre espace patient.</p><p>Bienvenue et merci de votre confiance,<br><strong>CuraMedical</strong></p>",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": { "id": "GMAIL_OAUTH2_ID", "name": "Gmail account" }
+      }
+    },
+    {
+      "id": "node-wa-patient",
+      "name": "WhatsApp Bienvenue Patient",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [200, 600],
+      "parameters": {
+        "to": "=whatsapp:{{ $json.body.patient_tel }}",
+        "from": "whatsapp:+14155238886",
+        "body": "=👋 Bienvenue sur CuraMedical !\n\nBonjour {{ $json.body.patient }},\n\nVotre dossier patient a été créé avec succès le {{ $json.body.date }}.\n\nAccédez à votre espace patient dès maintenant.\n\nL'équipe CuraMedical 🏥"
+      },
+      "credentials": {
+        "twilioApi": { "id": "TWILIO_CREDENTIAL_ID", "name": "Twilio account" }
+      }
+    }
+  ],
+  "connections": {
+    "Déclencheur 8h": {
+      "main": [[{ "node": "Obtenir Token JWT", "type": "main", "index": 0 }]]
+    },
+    "Obtenir Token JWT": {
+      "main": [[{ "node": "RDV de demain", "type": "main", "index": 0 }]]
+    },
+    "RDV de demain": {
+      "main": [[{ "node": "Split RDV", "type": "main", "index": 0 }]]
+    },
+    "Split RDV": {
+      "main": [
+        [
+          { "node": "Email Rappel 24h", "type": "main", "index": 0 },
+          { "node": "WhatsApp Rappel 24h", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Webhook RDV Terminé": {
+      "main": [
+        [
+          { "node": "Email RDV Terminé", "type": "main", "index": 0 },
+          { "node": "WhatsApp RDV Terminé", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Webhook Notifications": {
+      "main": [[{ "node": "Switch Événement", "type": "main", "index": 0 }]]
+    },
+    "Switch Événement": {
+      "main": [
+        [{ "node": "Convertir PDF", "type": "main", "index": 0 }],
+        [{ "node": "Email Bienvenue Patient", "type": "main", "index": 0 }]
+      ]
+    },
+    "Convertir PDF": {
+      "main": [
+        [
+          { "node": "Email Compte-Rendu", "type": "main", "index": 0 },
+          { "node": "WhatsApp Compte-Rendu", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Email Bienvenue Patient": {
+      "main": [[{ "node": "WhatsApp Bienvenue Patient", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}
