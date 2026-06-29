@@ -7,10 +7,10 @@ Base : http://localhost:3000
 
 | Rôle | Identifiant | Nom affiché |
 |---|---|---|
-| Administrateur | admin / adminpassword | Super Admin |
-| Médecin | medecin / medecinpassword | Dr Nouredine SAWADOGO |
-| Secrétaire | secretaire / secretairepassword | Kamara MACIRE |
-| Patient | abdou.salou / Demo2026! | Abdou SALOU |
+| Administrateur | admin | Super Admin |
+| Médecin | medecin | Dr Nouredine SAWADOGO |
+| Secrétaire | secretaire | Kamara MACIRE |
+| Patient | abdou.salou | Abdou SALOU |
 
 ## Captures
 
