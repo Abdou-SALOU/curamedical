@@ -1,7 +1,17 @@
 import { spawn } from 'node:child_process';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+
+// Charge le fichier .env du projet dans process.env (sans dépendance externe).
+function loadEnv(file = path.join(process.cwd(), '.env')) {
+  if (!existsSync(file)) return;
+  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^\s*([\w.-]+)\s*=\s*(.*)\s*$/);
+    if (m && !(m[1] in process.env)) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  }
+}
+loadEnv();
 
 // ─────────────────────────────────────────────────────────────
 //  CuraMedical — Capture visuelle automatisée (thème CLAIR, 16:9)
@@ -20,12 +30,25 @@ const SCALE = 2;
 const VW = 1920, VH = 1080;       // 16:9 (Full HD) pour les écrans applicatifs
 const PVW = 900, PVH = 1240;      // cadre portrait pour les PDF (page A4 ~793px à 100%, marges fines)
 
+// Identifiants des comptes de démonstration — lus depuis l'environnement
+// (cf. .env / .env.example). Aucun mot de passe n'est codé en dur ici.
+const demoAccount = (role, fallbackUser) => ({
+  username: process.env[`DEMO_${role}_USER`] || fallbackUser,
+  password: process.env[`DEMO_${role}_PASSWORD`] || '',
+});
 const accounts = {
-  admin:      { username: 'admin',         password: 'adminpassword' },
-  medecin:    { username: 'medecin',       password: 'medecinpassword' },   // Dr Nouredine SAWADOGO
-  secretaire: { username: 'secretaire',    password: 'secretairepassword' },// Kamara MACIRE
-  patient:    { username: 'abdou.salou',   password: 'Demo2026!' },         // Abdou SALOU
+  admin:      demoAccount('ADMIN', 'admin'),
+  medecin:    demoAccount('MEDECIN', 'medecin'),         // Dr Nouredine SAWADOGO
+  secretaire: demoAccount('SECRETAIRE', 'secretaire'),   // Kamara MACIRE
+  patient:    demoAccount('PATIENT', 'abdou.salou'),     // Abdou SALOU
 };
+
+const missingPw = Object.entries(accounts).filter(([, a]) => !a.password).map(([r]) => r);
+if (missingPw.length) {
+  console.error(`✗ Mots de passe de démo manquants pour : ${missingPw.join(', ')}.`);
+  console.error('  Renseignez DEMO_*_PASSWORD dans votre fichier .env (voir .env.example).');
+  process.exit(1);
+}
 
 // ── 1) Captures simples (page entière, viewport 16:9) ─────────
 const pages = [
@@ -90,10 +113,10 @@ const scenarios = [
           };
           set(document.querySelector('input[autocomplete="given-name"]'),  'Abdou');
           set(document.querySelector('input[autocomplete="family-name"]'), 'SALOU');
-          set(document.querySelector('input[autocomplete="username"]'),    'abdou.salou');
+          set(document.querySelector('input[autocomplete="username"]'),    ${JSON.stringify(accounts.patient.username)});
           const pw = document.querySelectorAll('input[autocomplete="new-password"]');
-          if (pw[0]) set(pw[0], 'Demo2026!');
-          if (pw[1]) set(pw[1], 'Demo2026!');
+          if (pw[0]) set(pw[0], ${JSON.stringify(accounts.patient.password)});
+          if (pw[1]) set(pw[1], ${JSON.stringify(accounts.patient.password)});
           return true;
         })()
       ` },
@@ -178,8 +201,8 @@ const scenarios = [
     steps: [
       { clickText: 'Connexion' },
       { wait: 'Bon retour' },
-      { type: { selector: '.login-modal input', value: 'medecin' } },
-      { type: { selector: '.login-modal input[type="password"]', value: 'medecinpassword' } },
+      { type: { selector: '.login-modal input', value: accounts.medecin.username } },
+      { type: { selector: '.login-modal input[type="password"]', value: accounts.medecin.password } },
       { delay: 400 },
     ],
     expect: 'retour',
@@ -411,10 +434,10 @@ async function run() {
       '', `Date : 2026-06-02`, `Base : ${BASE}`, '',
       '## Comptes de démonstration (équipe)',
       '', '| Rôle | Identifiant | Nom affiché |', '|---|---|---|',
-      '| Administrateur | admin / adminpassword | Super Admin |',
-      '| Médecin | medecin / medecinpassword | Dr Nouredine SAWADOGO |',
-      '| Secrétaire | secretaire / secretairepassword | Kamara MACIRE |',
-      '| Patient | abdou.salou / Demo2026! | Abdou SALOU |',
+      `| Administrateur | ${accounts.admin.username} | Super Admin |`,
+      `| Médecin | ${accounts.medecin.username} | Dr Nouredine SAWADOGO |`,
+      `| Secrétaire | ${accounts.secretaire.username} | Kamara MACIRE |`,
+      `| Patient | ${accounts.patient.username} | Abdou SALOU |`,
       '', '## Captures', '', '| Statut | Rôle | Capture |', '|---|---|---|',
       ...results.map(r => `| ${r.status} | ${r.role} | ${path.basename(r.file)} |`),
       '', '## Erreurs console', '',

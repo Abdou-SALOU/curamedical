@@ -1,7 +1,17 @@
 import { spawn } from 'node:child_process';
 import { writeFile, mkdir, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+
+// Charge le fichier .env du projet dans process.env (sans dépendance externe).
+function loadEnv(file = path.join(process.cwd(), '.env')) {
+  if (!existsSync(file)) return;
+  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^\s*([\w.-]+)\s*=\s*(.*)\s*$/);
+    if (m && !(m[1] in process.env)) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  }
+}
+loadEnv();
 
 // ─────────────────────────────────────────────────────────────
 //  Rend les PDF (ordonnance + compte rendu) en PNG pleine page.
@@ -20,7 +30,14 @@ const VW = 1240, VH = 1754;  // A4 ratio, deviceScaleFactor 1
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
 async function token() {
-  const r = await fetch(`${API}/api/token/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'medecin', password: 'medecinpassword' }) });
+  // Identifiants lus depuis l'environnement (cf. .env / .env.example).
+  const username = process.env.DEMO_MEDECIN_USER || 'medecin';
+  const password = process.env.DEMO_MEDECIN_PASSWORD || '';
+  if (!password) {
+    console.error('✗ DEMO_MEDECIN_PASSWORD manquant dans .env (voir .env.example).');
+    process.exit(1);
+  }
+  const r = await fetch(`${API}/api/token/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
   return (await r.json()).access;
 }
 async function firstId(ep, t) {
